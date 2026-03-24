@@ -1,0 +1,342 @@
+// ─────────────────────────────────────────────
+//  Prisma Schema — Medical Platform
+// ─────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+//  Enums
+// ─────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  DOCTOR
+  PATIENT
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum TriageLevel {
+  CRITICAL
+  URGENT
+  SEMI_URGENT
+  NON_URGENT
+  ROUTINE
+}
+
+// ─────────────────────────────────────────────
+//  User
+//  Single auth table for all humans in the system.
+//  Role determines which profile exists alongside it.
+// ─────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(PATIENT)
+  firstName    String
+  lastName     String
+  phone        String?
+  avatarUrl    String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // 1-to-1: only exists when role = PATIENT
+  patientProfile         PatientProfile?
+
+  // 1-to-1: only exists when role = DOCTOR
+  doctorProfile          DoctorProfile?
+
+  // 1-to-many: doctor side of appointments
+  appointmentsAsDoctor   Appointment[]    @relation("DoctorAppointments")
+
+  // 1-to-many: doctor authors medical records
+  medicalRecordsAuthored MedicalRecord[]  @relation("DoctorRecords")
+
+  // 1-to-many: doctor reviews triage assessments
+  triageReviews          TriageRecord[]   @relation("DoctorTriageReviews")
+
+  // 1-to-many: any user can chat with the assistant
+  aiChatSessions         AiChatSession[]
+
+  // 1-to-many: every action logged for GDPR
+  auditLogs              AuditLog[]
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+//  PatientProfile
+//  Medical identity for role=PATIENT users.
+// ─────────────────────────────────────────────
+
+model PatientProfile {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  dateOfBirth      DateTime
+  gender           Gender
+  bloodType        String?
+  allergies        String[] @default([])
+  cnp              String?  @unique         // Romanian national ID
+  insuranceNo      String?
+  emergencyContact String?
+  address          String?
+  city             String?
+  country          String   @default("Romania")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  appointments     Appointment[]
+  medicalRecords   MedicalRecord[]
+  invoices         Invoice[]
+  ocrDocuments     OcrDocument[]
+  triageRecords    TriageRecord[]
+  reviews          Review[]
+
+  @@map("patient_profiles")
+}
+
+// ─────────────────────────────────────────────
+//  DoctorProfile
+//  Public-facing profile for role=DOCTOR users.
+//  Patients browse this to choose who they book with.
+// ─────────────────────────────────────────────
+
+model DoctorProfile {
+  id                  String   @id @default(uuid())
+  userId              String   @unique
+  specialty           String                        // e.g. "Cardiologie", "Dermatologie"
+  bio                 String?                       // free-text shown on profile page
+  yearsOfExperience   Int?
+  consultationFee     Float
+  currency            String   @default("RON")
+  avgRating           Float?                        // recomputed after every new Review
+  totalReviews        Int      @default(0)
+  languages           String[] @default(["RO"])     // languages the doctor speaks
+  clinicAddress       String?
+  acceptsNewPatients  Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // reviews received from patients
+  reviews             Review[]
+
+  @@map("doctor_profiles")
+}
+
+// ─────────────────────────────────────────────
+//  Appointment
+//  Scheduled meeting between one patient and one doctor.
+//  feeAtBooking snapshots the doctor's fee at booking time
+//  so that future fee changes don't affect past records.
+// ─────────────────────────────────────────────
+
+model Appointment {
+  id            String            @id @default(uuid())
+  patientId     String
+  doctorId      String
+  scheduledAt   DateTime
+  duration      Int               @default(30)      // minutes
+  status        AppointmentStatus @default(PENDING)
+  reason        String?
+  notes         String?
+  roomNumber    String?
+  feeAtBooking  Float?                              // snapshot of DoctorProfile.consultationFee
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  patient       PatientProfile    @relation(fields: [patientId], references: [id])
+  doctor        User              @relation("DoctorAppointments", fields: [doctorId], references: [id])
+
+  // 1-to-1 optional: produced after appointment completes
+  medicalRecord MedicalRecord?
+
+  // 1-to-1 optional: patient can leave one review per appointment
+  review        Review?
+
+  @@map("appointments")
+}
+
+// ─────────────────────────────────────────────
+//  Review
+//  A patient rates a doctor after a completed appointment.
+//  One review per appointment (@unique on appointmentId).
+//  After insert, recompute DoctorProfile.avgRating and
+//  totalReviews via a Postgres trigger or app-level logic.
+// ─────────────────────────────────────────────
+
+model Review {
+  id            String         @id @default(uuid())
+  patientId     String
+  doctorId      String
+  appointmentId String         @unique              // one review per visit, enforced by DB
+  rating        Int                                 // 1–5
+  comment       String?
+  createdAt     DateTime       @default(now())
+
+  patient       PatientProfile @relation(fields: [patientId], references: [id])
+  doctor        DoctorProfile  @relation(fields: [doctorId], references: [id])
+  appointment   Appointment    @relation(fields: [appointmentId], references: [id])
+
+  @@map("reviews")
+}
+
+// ─────────────────────────────────────────────
+//  MedicalRecord
+//  Clinical note authored by a doctor for a patient.
+//  Optionally linked to the appointment that triggered it.
+// ─────────────────────────────────────────────
+
+model MedicalRecord {
+  id             String         @id @default(uuid())
+  patientId      String
+  doctorId       String
+  appointmentId  String?        @unique             // nullable — can exist without appointment
+  diagnosis      String?
+  symptoms       String[]       @default([])
+  treatment      String?
+  prescription   String?
+  labResults     Json?
+  notes          String?
+  isConfidential Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  patient        PatientProfile @relation(fields: [patientId], references: [id])
+  doctor         User           @relation("DoctorRecords", fields: [doctorId], references: [id])
+  appointment    Appointment?   @relation(fields: [appointmentId], references: [id])
+
+  @@map("medical_records")
+}
+
+// ─────────────────────────────────────────────
+//  Invoice
+// ─────────────────────────────────────────────
+
+model Invoice {
+  id              String         @id @default(uuid())
+  patientId       String
+  amount          Float
+  currency        String         @default("RON")
+  status          InvoiceStatus  @default(DRAFT)
+  lineItems       Json                             // [{ description, quantity, unitPrice }]
+  dueDate         DateTime?
+  paidAt          DateTime?
+  stripePaymentId String?
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  patient         PatientProfile @relation(fields: [patientId], references: [id])
+
+  @@map("invoices")
+}
+
+// ─────────────────────────────────────────────
+//  OcrDocument
+// ─────────────────────────────────────────────
+
+model OcrDocument {
+  id             String         @id @default(uuid())
+  patientId      String
+  fileUrl        String
+  extractedText  String?
+  structuredData Json?
+  confidence     Float?
+  processed      Boolean        @default(false)
+  processedAt    DateTime?
+  createdAt      DateTime       @default(now())
+
+  patient        PatientProfile @relation(fields: [patientId], references: [id])
+
+  @@map("ocr_documents")
+}
+
+// ─────────────────────────────────────────────
+//  TriageRecord
+// ─────────────────────────────────────────────
+
+model TriageRecord {
+  id                   String         @id @default(uuid())
+  patientId            String
+  reviewedByDoctorId   String?
+  symptoms             String[]
+  triageLevel          TriageLevel
+  recommendedSpecialty String?
+  aiConfidence         Float?
+  createdAt            DateTime       @default(now())
+
+  patient              PatientProfile @relation(fields: [patientId], references: [id])
+  reviewedByDoctor     User?          @relation("DoctorTriageReviews", fields: [reviewedByDoctorId], references: [id])
+
+  @@map("triage_records")
+}
+
+// ─────────────────────────────────────────────
+//  AiChatSession
+// ─────────────────────────────────────────────
+
+model AiChatSession {
+  id             String   @id @default(uuid())
+  userId         String
+  messages       Json                             // [{ role, content, timestamp }]
+  medicalContext Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user           User     @relation(fields: [userId], references: [id])
+
+  @@map("ai_chat_sessions")
+}
+
+// ─────────────────────────────────────────────
+//  AuditLog — append only, never updated
+// ─────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String
+  action     String                               // e.g. "READ_PATIENT", "UPDATE_RECORD"
+  resource   String                               // e.g. "MedicalRecord"
+  resourceId String?
+  ipAddress  String?
+  userAgent  String?
+  timestamp  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
