@@ -5,28 +5,27 @@ import {
   refreshToken,
   logout,
   getProfile,
+  updateOwnProfile,
   changePassword,
 } from '../controllers/auth.controller';
 import { authenticate } from '../middleware/auth.middleware';
+import { validate } from '../validators/validate';
+import {
+  registerSchema,
+  loginSchema,
+  refreshTokenSchema,
+  changePasswordSchema,
+  updateOwnProfileSchema,
+} from '../validators/auth.validator';
 
 const router = Router();
 
-// POST /api/auth/register
-router.post('/register', register);
-
-// POST /api/auth/login
-router.post('/login', login);
-
-// POST /api/auth/refresh
-router.post('/refresh', refreshToken);
-
-// POST /api/auth/logout
+router.post('/register', validate(registerSchema), register);
+router.post('/login', validate(loginSchema), login);
+router.post('/refresh', validate(refreshTokenSchema), refreshToken);
 router.post('/logout', authenticate, logout);
-
-// GET /api/auth/profile
 router.get('/profile', authenticate, getProfile);
-
-// PUT /api/auth/change-password
-router.put('/change-password', authenticate, changePassword);
+router.put('/profile', authenticate, validate(updateOwnProfileSchema), updateOwnProfile);
+router.put('/change-password', authenticate, validate(changePasswordSchema), changePassword);
 
 export default router;

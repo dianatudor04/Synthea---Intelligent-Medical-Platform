@@ -3,6 +3,7 @@ import { prisma } from '../config/database';
 import { ApiError } from '../middleware/error.middleware';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { aiService } from '../services/ai.service';
+import { getPatientUploadContext } from '../services/upload-context.service';
 
 // POST /api/ai/chat
 export const chatWithBot = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -17,8 +18,21 @@ export const chatWithBot = async (req: AuthRequest, res: Response, next: NextFun
 
     const messages = session ? (session.messages as Array<{ role: string; content: string; timestamp: string }>) : [];
 
-    // Call AI service (OpenAI stub)
-    const reply = await aiService.chat(message, messages);
+    // If the caller is a patient, fetch their uploaded documents (OCR'd) and
+    // pass them as context to the LLM. Only includes processed files with
+    // extracted text.
+    let patientUploads = undefined;
+    if (req.user?.role === 'PATIENT') {
+      const profile = await prisma.patientProfile.findUnique({
+        where: { userId: req.user.id },
+        select: { id: true },
+      });
+      if (profile) {
+        patientUploads = await getPatientUploadContext(profile.id, { onlyWithText: true });
+      }
+    }
+
+    const reply = await aiService.chat(message, messages, { patientUploads });
 
     messages.push(
       { role: 'user', content: message, timestamp: new Date().toISOString() },

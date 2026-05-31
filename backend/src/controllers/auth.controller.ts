@@ -1,40 +1,32 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import { prisma } from '../config/database';
+import { env } from '../config/env';
 import { ApiError } from '../middleware/error.middleware';
 import { AuthRequest } from '../middleware/auth.middleware';
 
-const ALLOWED_ROLES = ['ADMIN', 'DOCTOR', 'PATIENT'] as const;
-type AllowedRole = typeof ALLOWED_ROLES[number];
+const BCRYPT_ROUNDS = 12;
 
 const generateTokens = (userId: string, email: string, role: string) => {
-  const secret = process.env.JWT_SECRET!;
-  const refreshSecret = process.env.JWT_REFRESH_SECRET!;
-
-  const accessToken = jwt.sign({ id: userId, email, role }, secret, {
-    expiresIn: '15m',
-  });
-  const refreshToken = jwt.sign({ id: userId }, refreshSecret, {
-    expiresIn: '7d',
-  });
-
+  const accessOpts: SignOptions = { expiresIn: env.JWT_EXPIRES_IN as SignOptions['expiresIn'] };
+  const refreshOpts: SignOptions = { expiresIn: env.JWT_REFRESH_EXPIRES_IN as SignOptions['expiresIn'] };
+  const accessToken = jwt.sign({ id: userId, email, role }, env.JWT_SECRET, accessOpts);
+  const refreshToken = jwt.sign({ id: userId }, env.JWT_REFRESH_SECRET, refreshOpts);
   return { accessToken, refreshToken };
 };
 
 // POST /api/auth/register
 export const register = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { email, password, firstName, lastName, phone, role } = req.body;
-
-    const requestedRole: AllowedRole = ALLOWED_ROLES.includes(role) ? role : 'PATIENT';
+    const { email, password, firstName, lastName, phone } = req.body;
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) throw new ApiError(409, 'Email already in use');
 
-    const passwordHash = await bcrypt.hash(password, 12);
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const user = await prisma.user.create({
-      data: { email, passwordHash, firstName, lastName, phone, role: requestedRole },
+      data: { email, passwordHash, firstName, lastName, phone, role: 'PATIENT' },
       select: { id: true, email: true, firstName: true, lastName: true, role: true },
     });
 
@@ -70,9 +62,8 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
 export const refreshToken = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { refreshToken } = req.body;
-    if (!refreshToken) throw new ApiError(401, 'Refresh token required');
 
-    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET!) as { id: string };
+    const decoded = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET) as { id: string };
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
       select: { id: true, email: true, role: true, isActive: true },
@@ -118,6 +109,36 @@ export const getProfile = async (req: AuthRequest, res: Response, next: NextFunc
   }
 };
 
+// PUT /api/auth/profile
+export const updateOwnProfile = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { firstName, lastName, phone } = req.body;
+    const user = await prisma.user.update({
+      where: { id: req.user!.id },
+      data: {
+        ...(firstName !== undefined && { firstName }),
+        ...(lastName !== undefined && { lastName }),
+        ...(phone !== undefined && { phone }),
+      },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        phone: true,
+        avatarUrl: true,
+        createdAt: true,
+        patientProfile: true,
+        doctorProfile: true,
+      },
+    });
+    res.json(user);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // PUT /api/auth/change-password
 export const changePassword = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
@@ -128,7 +149,7 @@ export const changePassword = async (req: AuthRequest, res: Response, next: Next
     const valid = await bcrypt.compare(currentPassword, user.passwordHash);
     if (!valid) throw new ApiError(400, 'Current password is incorrect');
 
-    const passwordHash = await bcrypt.hash(newPassword, 12);
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
 
     res.json({ message: 'Password changed successfully' });

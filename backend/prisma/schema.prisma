@@ -19,6 +19,7 @@ enum Role {
   ADMIN
   DOCTOR
   PATIENT
+  NURSE
 }
 
 enum Gender {
@@ -167,18 +168,20 @@ model Appointment {
   id            String            @id @default(uuid())
   patientId     String
   doctorId      String
+  serviceId     String?
   scheduledAt   DateTime
   duration      Int               @default(30)      // minutes
   status        AppointmentStatus @default(PENDING)
   reason        String?
   notes         String?
   roomNumber    String?
-  feeAtBooking  Float?                              // snapshot of DoctorProfile.consultationFee
+  feeAtBooking  Float?                              // snapshot of fee at booking time
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
   patient       PatientProfile    @relation(fields: [patientId], references: [id])
   doctor        User              @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  service       MedicalService?   @relation(fields: [serviceId], references: [id])
 
   // 1-to-1 optional: produced after appointment completes
   medicalRecord MedicalRecord?
@@ -186,7 +189,34 @@ model Appointment {
   // 1-to-1 optional: patient can leave one review per appointment
   review        Review?
 
+  @@index([doctorId, scheduledAt])
+  @@index([patientId])
+  @@index([status])
   @@map("appointments")
+}
+
+// ─────────────────────────────────────────────
+//  MedicalService
+//  A bookable service offered for a given specialty
+//  (e.g. "Consultație inițială", "ECG", "Telemedicină").
+// ─────────────────────────────────────────────
+
+model MedicalService {
+  id          String   @id @default(uuid())
+  specialty   String                       // matches DoctorProfile.specialty
+  name        String
+  description String?
+  durationMin Int      @default(30)
+  basePrice   Float
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  appointments Appointment[]
+
+  @@index([specialty])
+  @@index([active])
+  @@map("medical_services")
 }
 
 // ─────────────────────────────────────────────
@@ -208,6 +238,8 @@ model Review {
   doctor        DoctorProfile  @relation(fields: [doctorId], references: [id])
   appointment   Appointment    @relation(fields: [appointmentId], references: [id])
 
+  @@index([doctorId])
+  @@index([patientId])
   @@map("reviews")
 }
 
@@ -236,6 +268,8 @@ model MedicalRecord {
   doctor         User           @relation("DoctorRecords", fields: [doctorId], references: [id])
   appointment    Appointment?   @relation(fields: [appointmentId], references: [id])
 
+  @@index([patientId])
+  @@index([doctorId])
   @@map("medical_records")
 }
 
@@ -259,6 +293,8 @@ model Invoice {
 
   patient         PatientProfile @relation(fields: [patientId], references: [id])
 
+  @@index([status])
+  @@index([patientId])
   @@map("invoices")
 }
 
@@ -269,7 +305,7 @@ model Invoice {
 model OcrDocument {
   id             String         @id @default(uuid())
   patientId      String
-  fileUrl        String
+  fileUrl        String?                                  // legacy public URL; nullable for new RustFS-backed records
   extractedText  String?
   structuredData Json?
   confidence     Float?
@@ -277,8 +313,18 @@ model OcrDocument {
   processedAt    DateTime?
   createdAt      DateTime       @default(now())
 
+  // RustFS-backed upload fields
+  fileName       String?                                  // original filename for display
+  storageKey     String?                                  // S3 object key inside RUSTFS_BUCKET
+  mimeType       String?
+  sizeBytes      BigInt?                                  // 1GB > Int32, use BigInt
+  category       String?                                  // optional: "lab" | "imaging" | "prescription" | "other"
+  source         String         @default("OCR")           // "OCR" (legacy) or "PATIENT_UPLOAD"
+
   patient        PatientProfile @relation(fields: [patientId], references: [id])
 
+  @@index([patientId])
+  @@index([source])
   @@map("ocr_documents")
 }
 
@@ -335,5 +381,7 @@ model AuditLog {
 
   user       User     @relation(fields: [userId], references: [id])
 
+  @@index([userId])
+  @@index([timestamp])
   @@map("audit_logs")
 }

@@ -20,6 +20,27 @@ services:
       timeout: 5s
       retries: 5
 
+  # ─── RustFS Object Storage (S3-compatible) ────────────────
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: synthea_rustfs
+    restart: unless-stopped
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-synthea_rustfs_access}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-synthea_rustfs_secret}
+      RUSTFS_VOLUMES: /data
+      RUSTFS_CONSOLE_ENABLE: 'true'
+    ports:
+      - '9000:9000'   # S3 API
+      - '9001:9001'   # web console
+    volumes:
+      - rustfs_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:9000/minio/health/live || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # ─── Backend API ──────────────────────────────────────────
   backend:
     build:
@@ -30,6 +51,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      rustfs:
+        condition: service_started
     environment:
       NODE_ENV: production
       PORT: 5000
@@ -39,10 +62,20 @@ services:
       FRONTEND_URL: http://localhost:3000
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      RUSTFS_ENDPOINT: http://rustfs:9000
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-synthea_rustfs_access}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-synthea_rustfs_secret}
+      RUSTFS_BUCKET: ${RUSTFS_BUCKET:-synthea-patient-uploads}
+      RUSTFS_REGION: ${RUSTFS_REGION:-us-east-1}
+      RUSTFS_PUBLIC_ENDPOINT: ${RUSTFS_PUBLIC_ENDPOINT:-http://localhost:9000}
+      MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-1024}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.0-flash-001}
+      OPENROUTER_REFERER: ${OPENROUTER_REFERER:-http://localhost:3000}
+      OPENROUTER_TITLE: ${OPENROUTER_TITLE:-Synthea Medical Platform}
     ports:
       - '5000:5000'
     volumes:
-      - ./backend/uploads:/app/uploads
       - ./backend/logs:/app/logs
 
   # ─── Frontend (Next.js) ───────────────────────────────────
@@ -61,4 +94,6 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  rustfs_data:
     driver: local

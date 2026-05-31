@@ -9,30 +9,19 @@ import {
   getOptimizedSchedule,
 } from '../controllers/appointment.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
+import { validate } from '../validators/validate';
+import { createAppointmentSchema, updateAppointmentSchema } from '../validators/appointment.validator';
 
 const router = Router();
 
 router.use(authenticate);
 
-// GET /api/appointments
 router.get('/', getAllAppointments);
-
-// GET /api/appointments/available-slots
 router.get('/available-slots', getAvailableSlots);
-
-// GET /api/appointments/optimized-schedule  (AI-powered ML scheduling)
 router.get('/optimized-schedule', authorize('ADMIN', 'DOCTOR'), getOptimizedSchedule);
-
-// POST /api/appointments
-router.post('/', createAppointment);
-
-// GET /api/appointments/:id
+router.post('/', validate(createAppointmentSchema), createAppointment);
 router.get('/:id', getAppointmentById);
-
-// PUT /api/appointments/:id
-router.put('/:id', updateAppointment);
-
-// DELETE /api/appointments/:id/cancel
+router.put('/:id', validate(updateAppointmentSchema), updateAppointment);
 router.delete('/:id/cancel', cancelAppointment);
 
 export default router;

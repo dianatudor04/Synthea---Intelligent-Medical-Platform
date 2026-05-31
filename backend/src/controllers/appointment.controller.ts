@@ -27,7 +27,9 @@ export const getAllAppointments = async (req: AuthRequest, res: Response, next: 
         where,
         include: {
           patient: { include: { user: { select: { firstName: true, lastName: true } } } },
-          doctor: { select: { firstName: true, lastName: true, email: true } },
+          doctor: { select: { firstName: true, lastName: true, email: true, doctorProfile: { select: { id: true, specialty: true } } } },
+          service: { select: { id: true, name: true, durationMin: true, basePrice: true } },
+          review: { select: { id: true, rating: true } },
         },
         skip,
         take: parseInt(limit),
@@ -64,14 +66,36 @@ export const getAppointmentById = async (req: AuthRequest, res: Response, next: 
 // POST /api/appointments
 export const createAppointment = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const { patientId, doctorId, scheduledAt, duration, reason, notes, roomNumber } = req.body;
+    const { patientId, doctorId, serviceId, scheduledAt, duration, reason, notes, roomNumber } = req.body;
 
-    // Snapshot the doctor's consultation fee at booking time
-    const doctorProfile = await prisma.doctorProfile.findUnique({ where: { userId: doctorId } });
-    const feeAtBooking = doctorProfile?.consultationFee ?? null;
+    let durationFinal = duration ?? 30;
+    let feeAtBooking: number | null = null;
+
+    if (serviceId) {
+      const service = await prisma.medicalService.findUnique({ where: { id: serviceId } });
+      if (!service || !service.active) throw new ApiError(400, 'Selected service is not available');
+      durationFinal = service.durationMin;
+      feeAtBooking = service.basePrice;
+    } else {
+      const doctorProfile = await prisma.doctorProfile.findUnique({ where: { userId: doctorId } });
+      feeAtBooking = doctorProfile?.consultationFee ?? null;
+    }
 
     const appointment = await prisma.appointment.create({
-      data: { patientId, doctorId, scheduledAt: new Date(scheduledAt), duration, reason, notes, roomNumber, feeAtBooking },
+      data: {
+        patientId,
+        doctorId,
+        serviceId: serviceId ?? null,
+        scheduledAt: new Date(scheduledAt),
+        duration: durationFinal,
+        reason,
+        notes,
+        roomNumber,
+        feeAtBooking,
+      },
+      include: {
+        service: { select: { id: true, name: true, durationMin: true, basePrice: true } },
+      },
     });
     res.status(201).json(appointment);
   } catch (err) {
@@ -82,10 +106,18 @@ export const createAppointment = async (req: AuthRequest, res: Response, next: N
 // PUT /api/appointments/:id
 export const updateAppointment = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const { feeAtBooking, ...data } = req.body; // prevent feeAtBooking override
+    const { scheduledAt, duration, status, reason, notes, roomNumber } = req.body;
+
     const appointment = await prisma.appointment.update({
       where: { id: req.params.id },
-      data,
+      data: {
+        ...(scheduledAt !== undefined && { scheduledAt: new Date(scheduledAt) }),
+        ...(duration !== undefined && { duration }),
+        ...(status !== undefined && { status }),
+        ...(reason !== undefined && { reason }),
+        ...(notes !== undefined && { notes }),
+        ...(roomNumber !== undefined && { roomNumber }),
+      },
     });
     res.json(appointment);
   } catch (err) {
@@ -119,7 +151,7 @@ export const getAvailableSlots = async (req: AuthRequest, res: Response, next: N
   }
 };
 
-// GET /api/appointments/optimized-schedule  (AI/ML stub)
+// GET /api/appointments/optimized-schedule
 export const getOptimizedSchedule = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { doctorId, date } = req.query as Record<string, string>;

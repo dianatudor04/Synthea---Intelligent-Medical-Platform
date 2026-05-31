@@ -49,7 +49,7 @@ export const getInvoiceById = async (req: AuthRequest, res: Response, next: Next
 export const createInvoice = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { patientId, amount, currency, lineItems, dueDate, notes } = req.body;
-    if (!lineItems) throw new ApiError(400, 'lineItems is required');
+
     const invoice = await prisma.invoice.create({
       data: { patientId, amount, currency, lineItems, dueDate: dueDate ? new Date(dueDate) : undefined, notes },
     });
@@ -62,9 +62,18 @@ export const createInvoice = async (req: AuthRequest, res: Response, next: NextF
 // PUT /api/billing/invoices/:id
 export const updateInvoice = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
+    const { amount, currency, lineItems, dueDate, notes, status } = req.body;
+
     const invoice = await prisma.invoice.update({
       where: { id: req.params.id },
-      data: req.body,
+      data: {
+        ...(amount !== undefined && { amount }),
+        ...(currency !== undefined && { currency }),
+        ...(lineItems !== undefined && { lineItems }),
+        ...(dueDate !== undefined && { dueDate: new Date(dueDate) }),
+        ...(notes !== undefined && { notes }),
+        ...(status !== undefined && { status }),
+      },
     });
     res.json(invoice);
   } catch (err) {
@@ -72,7 +81,7 @@ export const updateInvoice = async (req: AuthRequest, res: Response, next: NextF
   }
 };
 
-// POST /api/billing/invoices/:id/pay  (Stripe stub)
+// POST /api/billing/invoices/:id/pay
 export const processPayment = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { paymentMethod } = req.body;

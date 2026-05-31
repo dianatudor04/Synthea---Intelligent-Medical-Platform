@@ -76,10 +76,30 @@ export const createPatient = async (req: AuthRequest, res: Response, next: NextF
 // PUT /api/patients/:id
 export const updatePatient = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const { userId, ...data } = req.body; // prevent userId reassignment
+    const target = await prisma.patientProfile.findUnique({ where: { id: req.params.id } });
+    if (!target) throw new ApiError(404, 'Patient not found');
+
+    // Patients may only update their own profile; staff (ADMIN/DOCTOR) may update any.
+    if (req.user!.role === 'PATIENT' && target.userId !== req.user!.id) {
+      throw new ApiError(403, 'You can only update your own patient profile');
+    }
+
+    const { dateOfBirth, gender, address, city, country, bloodType, allergies, cnp, insuranceNo, emergencyContact } = req.body;
+
     const patient = await prisma.patientProfile.update({
       where: { id: req.params.id },
-      data,
+      data: {
+        ...(dateOfBirth !== undefined && { dateOfBirth: new Date(dateOfBirth) }),
+        ...(gender !== undefined && { gender }),
+        ...(address !== undefined && { address }),
+        ...(city !== undefined && { city }),
+        ...(country !== undefined && { country }),
+        ...(bloodType !== undefined && { bloodType }),
+        ...(allergies !== undefined && { allergies }),
+        ...(cnp !== undefined && { cnp }),
+        ...(insuranceNo !== undefined && { insuranceNo }),
+        ...(emergencyContact !== undefined && { emergencyContact }),
+      },
     });
     res.json(patient);
   } catch (err) {
@@ -87,11 +107,18 @@ export const updatePatient = async (req: AuthRequest, res: Response, next: NextF
   }
 };
 
-// DELETE /api/patients/:id
+// DELETE /api/patients/:id (soft delete — deactivate associated user)
 export const deletePatient = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    await prisma.patientProfile.delete({ where: { id: req.params.id } });
-    res.status(204).send();
+    const patient = await prisma.patientProfile.findUnique({ where: { id: req.params.id } });
+    if (!patient) throw new ApiError(404, 'Patient not found');
+
+    await prisma.user.update({
+      where: { id: patient.userId },
+      data: { isActive: false },
+    });
+
+    res.json({ message: 'Patient deactivated successfully' });
   } catch (err) {
     next(err);
   }
@@ -100,14 +127,23 @@ export const deletePatient = async (req: AuthRequest, res: Response, next: NextF
 // GET /api/patients/:id/medical-records
 export const getPatientMedicalRecords = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const records = await prisma.medicalRecord.findMany({
-      where: { patientId: req.params.id },
-      include: {
-        doctor: { select: { firstName: true, lastName: true, email: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(records);
+    const { page = '1', limit = '20' } = req.query as Record<string, string>;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const [records, total] = await Promise.all([
+      prisma.medicalRecord.findMany({
+        where: { patientId: req.params.id },
+        include: {
+          doctor: { select: { firstName: true, lastName: true, email: true } },
+        },
+        skip,
+        take: parseInt(limit),
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.medicalRecord.count({ where: { patientId: req.params.id } }),
+    ]);
+
+    res.json({ data: records, total, page: parseInt(page), limit: parseInt(limit) });
   } catch (err) {
     next(err);
   }
@@ -116,12 +152,20 @@ export const getPatientMedicalRecords = async (req: AuthRequest, res: Response, 
 // POST /api/patients/:id/medical-records
 export const createMedicalRecord = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    // doctorId is the authenticated user (must be DOCTOR or ADMIN)
+    const { diagnosis, symptoms, treatment, prescription, labResults, notes, isConfidential, appointmentId } = req.body;
+
     const record = await prisma.medicalRecord.create({
       data: {
         patientId: req.params.id,
         doctorId: req.user!.id,
-        ...req.body,
+        diagnosis,
+        symptoms,
+        treatment,
+        prescription,
+        labResults,
+        notes,
+        isConfidential,
+        appointmentId,
       },
     });
     res.status(201).json(record);

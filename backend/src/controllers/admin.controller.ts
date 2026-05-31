@@ -1,5 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { prisma } from '../config/database';
+import { ApiError } from '../middleware/error.middleware';
 import { AuthRequest } from '../middleware/auth.middleware';
 
 // GET /api/admin/dashboard
@@ -89,10 +90,7 @@ export const getUserById = async (req: AuthRequest, res: Response, next: NextFun
         doctorProfile: true,
       },
     });
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
+    if (!user) throw new ApiError(404, 'User not found');
     res.json(user);
   } catch (err) {
     next(err);
@@ -102,10 +100,17 @@ export const getUserById = async (req: AuthRequest, res: Response, next: NextFun
 // PUT /api/admin/users/:id
 export const updateUser = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const { passwordHash, ...data } = req.body; // Prevent direct password update
+    const { firstName, lastName, phone, role, isActive } = req.body;
+
     const user = await prisma.user.update({
       where: { id: req.params.id },
-      data,
+      data: {
+        ...(firstName !== undefined && { firstName }),
+        ...(lastName !== undefined && { lastName }),
+        ...(phone !== undefined && { phone }),
+        ...(role !== undefined && { role }),
+        ...(isActive !== undefined && { isActive }),
+      },
       select: { id: true, email: true, firstName: true, lastName: true, role: true, isActive: true },
     });
     res.json(user);
@@ -114,7 +119,7 @@ export const updateUser = async (req: AuthRequest, res: Response, next: NextFunc
   }
 };
 
-// DELETE /api/admin/users/:id  (soft delete)
+// DELETE /api/admin/users/:id (soft delete)
 export const deactivateUser = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     await prisma.user.update({ where: { id: req.params.id }, data: { isActive: false } });

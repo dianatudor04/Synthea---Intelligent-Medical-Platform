@@ -6,21 +6,16 @@ import {
   getDecisionSupport,
 } from '../controllers/ai.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
+import { validate } from '../validators/validate';
+import { chatSchema, triageSchema, decisionSupportSchema } from '../validators/ai.validator';
 
 const router = Router();
 
 router.use(authenticate);
 
-// POST /api/ai/chat  — Conversational chatbot (LLM)
-router.post('/chat', chatWithBot);
-
-// GET /api/ai/chat/history   — Chat session history
+router.post('/chat', validate(chatSchema), chatWithBot);
 router.get('/chat/history', getChatHistory);
-
-// POST /api/ai/triage  — Symptom triage classification
-router.post('/triage', triageSymptoms);
-
-// POST /api/ai/decision-support  — Clinical decision support for doctors
-router.post('/decision-support', authorize('DOCTOR', 'ADMIN'), getDecisionSupport);
+router.post('/triage', validate(triageSchema), triageSymptoms);
+router.post('/decision-support', authorize('DOCTOR', 'ADMIN'), validate(decisionSupportSchema), getDecisionSupport);
 
 export default router;

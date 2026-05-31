@@ -10,36 +10,23 @@ import {
   getMedicalRecordById,
 } from '../controllers/patient.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
+import { validate } from '../validators/validate';
+import { createPatientSchema, updatePatientSchema, createMedicalRecordSchema } from '../validators/patient.validator';
 
 const router = Router();
 
-// All patient routes require authentication
 router.use(authenticate);
 
-// GET /api/patients
 router.get('/', authorize('ADMIN', 'DOCTOR'), getAllPatients);
-
-// POST /api/patients
-router.post('/', authorize('ADMIN', 'DOCTOR'), createPatient);
-
-// GET /api/patients/:id
+router.post('/', authorize('ADMIN', 'DOCTOR'), validate(createPatientSchema), createPatient);
 router.get('/:id', getPatientById);
-
-// PUT /api/patients/:id
-router.put('/:id', authorize('ADMIN', 'DOCTOR'), updatePatient);
-
-// DELETE /api/patients/:id
+// Authenticated; controller enforces patient-self-update ownership.
+router.put('/:id', validate(updatePatientSchema), updatePatient);
 router.delete('/:id', authorize('ADMIN'), deletePatient);
 
-// ─── Medical Records ───────────────────────────────────
-
-// GET /api/patients/:id/medical-records
+// Medical Records
 router.get('/:id/medical-records', authorize('ADMIN', 'DOCTOR'), getPatientMedicalRecords);
-
-// POST /api/patients/:id/medical-records  (DOCTOR authors via req.user.id)
-router.post('/:id/medical-records', authorize('ADMIN', 'DOCTOR'), createMedicalRecord);
-
-// GET /api/patients/:id/medical-records/:recordId
+router.post('/:id/medical-records', authorize('ADMIN', 'DOCTOR'), validate(createMedicalRecordSchema), createMedicalRecord);
 router.get('/:id/medical-records/:recordId', authorize('ADMIN', 'DOCTOR'), getMedicalRecordById);
 
 export default router;

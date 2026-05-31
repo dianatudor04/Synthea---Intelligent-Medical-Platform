@@ -1,10 +1,11 @@
+import { env } from '../config/env';
 import { logger } from '../config/logger';
+import { UploadContextItem } from './upload-context.service';
 
 // ─────────────────────────────────────────────────────────
-//  AI Service — OpenAI Integration Stubs
-//  TODO: Replace stubs with real OpenAI API calls
-//  Required: npm install openai
-//  Set OPENAI_API_KEY in .env
+//  AI Service — OpenRouter (cheap models) for the patient
+//  chatbot. Falls back to a stub response when no key is
+//  configured so the app still boots / tests still pass.
 // ─────────────────────────────────────────────────────────
 
 type ChatMessage = { role: string; content: string; timestamp: string };
@@ -24,28 +25,134 @@ type DecisionSupportResult = {
   disclaimer: string;
 };
 
+type ChatOptions = {
+  /** Patient-uploaded files with OCR'd text, injected as context. */
+  patientUploads?: UploadContextItem[];
+};
+
+// How many chars from each file we send to the model.
+const MAX_CHARS_PER_FILE = 3_000;
+// Total cap across all files combined.
+const MAX_TOTAL_FILE_CHARS = 20_000;
+// Number of recent uploads we look at.
+const MAX_FILES_IN_CONTEXT = 10;
+
+const MEDICAL_SYSTEM_PROMPT = `You are Synthea, a friendly medical assistant chatbot integrated into a healthcare platform.
+
+Rules:
+- You are NOT a doctor. Never provide a definitive diagnosis or prescription.
+- Always remind the user to consult a licensed physician for any medical decision.
+- Be concise, empathetic and clear. Use the same language the user writes in (Romanian or English).
+- If the user has uploaded medical documents and the extracted text is provided below,
+  use it as factual context about that specific patient. Reference filenames when relevant.
+- If the user asks about their files and there is no context, tell them you cannot see any
+  processed documents yet (uploads may still be processing).
+- If the user describes urgent / red-flag symptoms (chest pain, stroke signs, difficulty
+  breathing, suicidal ideation, etc.), tell them to seek emergency care immediately.`;
+
+function buildFileContextBlock(uploads: UploadContextItem[] | undefined): string | null {
+  if (!uploads || uploads.length === 0) return null;
+  const usable = uploads
+    .filter((u) => u.extractedText && u.extractedText.trim().length > 0)
+    .slice(0, MAX_FILES_IN_CONTEXT);
+  if (usable.length === 0) return null;
+
+  const sections: string[] = [];
+  let budget = MAX_TOTAL_FILE_CHARS;
+
+  for (const u of usable) {
+    if (budget <= 0) break;
+    const text = u.extractedText!.slice(0, Math.min(MAX_CHARS_PER_FILE, budget));
+    budget -= text.length;
+    const header = [
+      `# ${u.fileName ?? 'Untitled'}`,
+      u.category ? `category: ${u.category}` : null,
+      `uploaded: ${u.uploadedAt.toISOString().slice(0, 10)}`,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    sections.push(`${header}\n${text}`);
+  }
+
+  return [
+    "The following are the patient's uploaded medical documents (text extracted via OCR).",
+    'They may be incomplete or noisy. Treat them as context, not as verified ground truth.',
+    '',
+    sections.join('\n\n---\n\n'),
+  ].join('\n');
+}
+
+type OpenRouterMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+
+async function callOpenRouter(messages: OpenRouterMessage[]): Promise<string> {
+  if (!env.OPENROUTER_API_KEY) {
+    throw new Error('OPENROUTER_API_KEY not configured');
+  }
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+      // Recommended by OpenRouter for attribution / analytics.
+      'HTTP-Referer': env.OPENROUTER_REFERER,
+      'X-Title': env.OPENROUTER_TITLE,
+    },
+    body: JSON.stringify({
+      model: env.OPENROUTER_MODEL,
+      messages,
+      temperature: 0.3,
+    }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '');
+    throw new Error(`OpenRouter ${res.status}: ${errBody.slice(0, 300)}`);
+  }
+  const data = (await res.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
+  const content = data.choices?.[0]?.message?.content?.trim();
+  if (!content) throw new Error('OpenRouter returned empty content');
+  return content;
+}
+
 class AiService {
   /**
-   * Conversational chatbot using LLM
-   * TODO: Integrate OpenAI Chat Completions API
+   * Conversational chatbot. Uses OpenRouter when configured, falls back to
+   * a stub otherwise so local dev without a key still works.
    */
-  async chat(message: string, history: ChatMessage[]): Promise<string> {
+  async chat(
+    message: string,
+    history: ChatMessage[],
+    options: ChatOptions = {},
+  ): Promise<string> {
     logger.info(`[AI] Chat message received: "${message.slice(0, 50)}..."`);
 
-    // TODO: Replace with real OpenAI integration
-    // const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    // const response = await openai.chat.completions.create({
-    //   model: 'gpt-4-turbo',
-    //   messages: [
-    //     { role: 'system', content: MEDICAL_SYSTEM_PROMPT },
-    //     ...history.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-    //     { role: 'user', content: message },
-    //   ],
-    // });
-    // return response.choices[0].message.content!;
+    const fileContext = buildFileContextBlock(options.patientUploads);
 
-    // STUB RESPONSE
-    return `[Synthea AI Stub] Am primit mesajul: "${message}". Aceasta este o platformă medicală inteligentă. Vă rugăm să consultați un medic pentru sfaturi medicale reale.`;
+    if (!env.OPENROUTER_API_KEY) {
+      // Stub path — preserves prior behavior so the app boots without a key.
+      logger.warn('[AI] OPENROUTER_API_KEY not set, returning stub response');
+      return `[Synthea AI Stub] Am primit mesajul: "${message}". Configurați OPENROUTER_API_KEY pentru a activa modelul real.`;
+    }
+
+    const messages: OpenRouterMessage[] = [{ role: 'system', content: MEDICAL_SYSTEM_PROMPT }];
+    if (fileContext) {
+      messages.push({ role: 'system', content: fileContext });
+    }
+    for (const m of history) {
+      if (m.role === 'user' || m.role === 'assistant') {
+        messages.push({ role: m.role, content: m.content });
+      }
+    }
+    messages.push({ role: 'user', content: message });
+
+    try {
+      return await callOpenRouter(messages);
+    } catch (err) {
+      logger.error('[AI] OpenRouter call failed', { error: err });
+      return 'Ne pare rău, asistentul nu este disponibil acum. Vă rugăm să încercați din nou mai târziu.';
+    }
   }
 
   /**
@@ -55,19 +162,22 @@ class AiService {
   async triage(symptoms: string[]): Promise<TriageResult> {
     logger.info(`[AI] Triage request for symptoms: ${symptoms.join(', ')}`);
 
-    // TODO: Replace with real ML model inference or OpenAI function calling
-    // Could use a fine-tuned classification model or structured GPT-4 output
-
-    // STUB: Simple keyword-based triage
-    const urgentKeywords = ['chest pain', 'difficulty breathing', 'stroke', 'unconscious', 'durere piept', 'dificultate respiratie'];
-    const isUrgent = symptoms.some(s =>
-      urgentKeywords.some(k => s.toLowerCase().includes(k))
+    const urgentKeywords = [
+      'chest pain',
+      'difficulty breathing',
+      'stroke',
+      'unconscious',
+      'durere piept',
+      'dificultate respiratie',
+    ];
+    const isUrgent = symptoms.some((s) =>
+      urgentKeywords.some((k) => s.toLowerCase().includes(k)),
     );
 
     return {
       level: isUrgent ? 'URGENT' : 'NON_URGENT',
       specialty: isUrgent ? 'Cardiologie / Urgente' : 'Medicina Generala',
-      confidence: 0.72, // Stub confidence
+      confidence: 0.72,
       reasoning: '[STUB] Triaj automat bazat pe cuvinte cheie. Va fi înlocuit cu model ML antrenat.',
     };
   }
@@ -76,29 +186,23 @@ class AiService {
    * Clinical Decision Support System for doctors
    * TODO: Integrate with medical knowledge base + LLM
    */
-  async clinicalDecisionSupport(data: {
+  async clinicalDecisionSupport(_data: {
     symptoms: string[];
     medicalHistory?: string;
     labResults?: Record<string, unknown>;
   }): Promise<DecisionSupportResult> {
     logger.info(`[AI] Clinical decision support requested`);
 
-    // TODO: Integrate with:
-    // 1. Medical NLP model (e.g., BioGPT, Med-PaLM)
-    // 2. Clinical knowledge graph
-    // 3. Drug interaction database
-    // 4. OpenAI with medical RAG (Retrieval Augmented Generation)
-
-    // STUB RESPONSE
     return {
       possibleDiagnoses: [
         { name: '[STUB] Diagnostic Exemplu 1', confidence: 0.65 },
-        { name: '[STUB] Diagnostic Exemplu 2', confidence: 0.30 },
+        { name: '[STUB] Diagnostic Exemplu 2', confidence: 0.3 },
       ],
       recommendedTests: ['[STUB] Analize sange complete', '[STUB] Radiografie toracica'],
       treatmentSuggestions: ['[STUB] Tratament standard de exemplu'],
       warnings: ['[STUB] Verificați alergiile pacientului'],
-      disclaimer: 'IMPORTANT: Aceasta este o sugestie AI și nu înlocuiește judecata clinică a medicului.',
+      disclaimer:
+        'IMPORTANT: Aceasta este o sugestie AI și nu înlocuiește judecata clinică a medicului.',
     };
   }
 }

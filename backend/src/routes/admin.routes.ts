@@ -8,27 +8,23 @@ import {
   getDashboardStats,
 } from '../controllers/admin.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
+import { validate } from '../validators/validate';
+import { updateUserSchema } from '../validators/admin.validator';
 
 const router = Router();
 
-router.use(authenticate, authorize('ADMIN'));
+router.use(authenticate);
 
-// GET /api/admin/dashboard
-router.get('/dashboard', getDashboardStats);
+// Dashboard stats are useful for both ADMIN and DOCTOR (read-only)
+router.get('/dashboard', authorize('ADMIN', 'DOCTOR'), getDashboardStats);
 
-// GET /api/admin/users
-router.get('/users', getAllUsers);
+// User management — ADMIN only
+router.get('/users', authorize('ADMIN'), getAllUsers);
+router.get('/users/:id', authorize('ADMIN'), getUserById);
+router.put('/users/:id', authorize('ADMIN'), validate(updateUserSchema), updateUser);
+router.delete('/users/:id', authorize('ADMIN'), deactivateUser);
 
-// GET /api/admin/users/:id
-router.get('/users/:id', getUserById);
-
-// PUT /api/admin/users/:id
-router.put('/users/:id', updateUser);
-
-// DELETE /api/admin/users/:id
-router.delete('/users/:id', deactivateUser);
-
-// GET /api/admin/audit-logs
-router.get('/audit-logs', getAuditLogs);
+// Audit log — ADMIN only
+router.get('/audit-logs', authorize('ADMIN'), getAuditLogs);
 
 export default router;

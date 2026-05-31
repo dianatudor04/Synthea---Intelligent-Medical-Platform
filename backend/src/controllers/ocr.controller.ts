@@ -21,9 +21,11 @@ export const uploadDocument = async (req: AuthRequest, res: Response, next: Next
     });
 
     // Process asynchronously (OCR stub)
-    ocrService.processDocument(doc.id, doc.fileUrl).catch(() => {
-      // Non-fatal — document will remain in pending state
-    });
+    if (doc.fileUrl) {
+      ocrService.processDocument(doc.id, doc.fileUrl).catch(() => {
+        // Non-fatal — document will remain in pending state
+      });
+    }
 
     res.status(202).json({ id: doc.id, status: 'processing', message: 'Document uploaded and queued for OCR processing' });
   } catch (err) {
@@ -61,6 +63,7 @@ export const reprocessDocument = async (req: AuthRequest, res: Response, next: N
     const doc = await prisma.ocrDocument.findUnique({ where: { id: req.params.id } });
     if (!doc) throw new ApiError(404, 'Document not found');
 
+    if (!doc.fileUrl) throw new ApiError(409, 'Document has no source file to reprocess');
     await prisma.ocrDocument.update({ where: { id: doc.id }, data: { processed: false, processedAt: null } });
     ocrService.processDocument(doc.id, doc.fileUrl).catch(() => {});
 

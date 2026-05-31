@@ -3,7 +3,7 @@ import { prisma } from '../config/database';
 import { ApiError } from '../middleware/error.middleware';
 import { AuthRequest } from '../middleware/auth.middleware';
 
-// GET /api/doctors  — public list of doctor profiles
+// GET /api/doctors
 export const getAllDoctors = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { specialty, acceptsNewPatients, page = '1', limit = '20' } = req.query as Record<string, string>;
@@ -55,7 +55,7 @@ export const getDoctorById = async (req: AuthRequest, res: Response, next: NextF
   }
 };
 
-// GET /api/doctors/by-user/:userId — look up DoctorProfile by User ID
+// GET /api/doctors/by-user/:userId
 export const getDoctorByUserId = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const doctor = await prisma.doctorProfile.findUnique({
@@ -71,26 +71,11 @@ export const getDoctorByUserId = async (req: AuthRequest, res: Response, next: N
   }
 };
 
-// POST /api/doctors/profile  — ADMIN creates a DoctorProfile for an existing DOCTOR user
+// POST /api/doctors/profile
 export const createDoctorProfile = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const {
-      userId,
-      specialty,
-      bio,
-      yearsOfExperience,
-      consultationFee,
-      currency,
-      languages,
-      clinicAddress,
-      acceptsNewPatients,
-    } = req.body;
+    const { userId, specialty, bio, yearsOfExperience, consultationFee, currency, languages, clinicAddress, acceptsNewPatients } = req.body;
 
-    if (!userId || !specialty || consultationFee === undefined) {
-      throw new ApiError(400, 'userId, specialty, and consultationFee are required');
-    }
-
-    // Verify the user exists and has role DOCTOR
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new ApiError(404, 'User not found');
     if (user.role !== 'DOCTOR') throw new ApiError(400, 'User must have role DOCTOR');
@@ -108,22 +93,30 @@ export const createDoctorProfile = async (req: AuthRequest, res: Response, next:
   }
 };
 
-// PUT /api/doctors/:id/profile  — ADMIN or the doctor themselves can update
+// PUT /api/doctors/:id/profile
 export const updateDoctorProfile = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const { userId, avgRating, totalReviews, ...data } = req.body; // protect computed/immutable fields
+    const { specialty, bio, yearsOfExperience, consultationFee, currency, languages, clinicAddress, acceptsNewPatients } = req.body;
 
     const existing = await prisma.doctorProfile.findUnique({ where: { id: req.params.id } });
     if (!existing) throw new ApiError(404, 'Doctor profile not found');
 
-    // DOCTOR can only update their own profile
     if (req.user!.role === 'DOCTOR' && existing.userId !== req.user!.id) {
       throw new ApiError(403, 'Doctors can only update their own profile');
     }
 
     const profile = await prisma.doctorProfile.update({
       where: { id: req.params.id },
-      data,
+      data: {
+        ...(specialty !== undefined && { specialty }),
+        ...(bio !== undefined && { bio }),
+        ...(yearsOfExperience !== undefined && { yearsOfExperience }),
+        ...(consultationFee !== undefined && { consultationFee }),
+        ...(currency !== undefined && { currency }),
+        ...(languages !== undefined && { languages }),
+        ...(clinicAddress !== undefined && { clinicAddress }),
+        ...(acceptsNewPatients !== undefined && { acceptsNewPatients }),
+      },
       include: { user: { select: { firstName: true, lastName: true, email: true } } },
     });
     res.json(profile);
