@@ -385,3 +385,32 @@ model AuditLog {
   @@index([timestamp])
   @@map("audit_logs")
 }
+
+// ─────────────────────────────────────────────
+//  Drug interactions (DDInter dataset)
+// ─────────────────────────────────────────────
+
+// Master list of known drugs — used for medication autocomplete.
+model Drug {
+  name String @id                                   // canonical display name from DDInter
+  key  String @unique                               // lowercased name, used for matching
+
+  @@index([key])
+  @@map("drugs")
+}
+
+// Pairwise drug-drug interactions. Keys are lowercased and canonically
+// ordered (keyA <= keyB) so a pair can be looked up regardless of input order.
+model DrugInteraction {
+  id    Int    @id @default(autoincrement())
+  keyA  String                                      // lowercased drug name, keyA <= keyB
+  keyB  String
+  drugA String                                      // original display name
+  drugB String
+  level String                                      // Major | Moderate | Minor | Unknown
+
+  @@unique([keyA, keyB])
+  @@index([keyA])
+  @@index([keyB])
+  @@map("drug_interactions")
+}

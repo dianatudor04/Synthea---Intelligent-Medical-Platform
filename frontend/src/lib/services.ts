@@ -18,6 +18,7 @@ import {
   AdminUser,
   UserProfile,
   UploadCategory,
+  DrugInteraction,
 } from './types';
 
 // ─── Patients ────────────────────────────────────────────────────────
@@ -44,6 +45,14 @@ export const patientsApi = {
     api.get<Paginated<MedicalRecord>>(`/patients/${id}/medical-records`, params),
   createMedicalRecord: (id: string, input: Partial<MedicalRecord>) =>
     api.post<MedicalRecord>(`/patients/${id}/medical-records`, input),
+};
+
+// ─── Drug interactions (DDInter) ─────────────────────────────────────
+export const interactionsApi = {
+  searchDrugs: (search: string, limit = 10) =>
+    api.get<{ drugs: string[] }>('/interactions/drugs', { search, limit }),
+  check: (drugs: string[]) =>
+    api.post<{ interactions: DrugInteraction[]; count: number }>('/interactions/check', { drugs }),
 };
 
 // ─── Doctors ─────────────────────────────────────────────────────────

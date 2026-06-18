@@ -120,6 +120,14 @@ export type MedicalRecord = {
   doctor?: { firstName: string; lastName: string; email?: string };
 };
 
+export type InteractionLevel = 'Major' | 'Moderate' | 'Minor' | 'Unknown';
+
+export type DrugInteraction = {
+  drugA: string;
+  drugB: string;
+  level: InteractionLevel;
+};
+
 export type Invoice = {
   id: string;
   patientId: string;

@@ -24,6 +24,7 @@ import doctorRoutes from './routes/doctor.routes';
 import reviewRoutes from './routes/review.routes';
 import serviceRoutes from './routes/service.routes';
 import uploadRoutes from './routes/upload.routes';
+import interactionRoutes from './routes/interaction.routes';
 
 const app = express();
 
@@ -102,6 +103,7 @@ app.use('/api/doctors', doctorRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/uploads', uploadRoutes);
+app.use('/api/interactions', interactionRoutes);
 
 // ─── 404 Handler ──────────────────────────────────────
 app.use('*', (_req, res) => {

@@ -9,3 +9,6 @@ Thumbs.db
 .idea/
 .vscode/
 *.local
+
+# DDInter dataset (large; download via backend/data/ddinter/download.sh)
+backend/data/ddinter/*.csv
