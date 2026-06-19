@@ -11,6 +11,7 @@ import {
   Search,
   Bell,
   LogOut,
+  BookOpen,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Avatar, AvatarFallback } from './ui/avatar';
@@ -19,6 +20,7 @@ import { useAuth } from '../../lib/auth';
 const navigationItems = [
   { path: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { path: '/admin/staff', label: 'Staff', icon: Users },
+  { path: '/admin/content', label: 'Content', icon: BookOpen },
   { path: '/admin/billing', label: 'Billing', icon: DollarSign },
   { path: '/admin/settings', label: 'Settings', icon: Settings },
 ];

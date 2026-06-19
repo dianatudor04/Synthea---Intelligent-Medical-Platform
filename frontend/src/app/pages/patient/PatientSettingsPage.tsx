@@ -1,10 +1,36 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router';
-import { ArrowLeft, Bell, Lock, Globe, Moon, Shield, LogOut } from 'lucide-react';
+import { ArrowLeft, Bell, Lock, Globe, Moon, Shield, LogOut, Database, Sparkles, Mail } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Switch } from '../../components/ui/switch';
 import { useAuth } from '../../../lib/auth';
+import { consentApi } from '../../../lib/services';
+import { setTrackingEnabled } from '../../../lib/events';
+import type { ConsentFlags } from '../../../lib/types';
+
+type ConsentFlag = 'analytics' | 'profiling' | 'marketingEmail';
+
+const CONSENT_ITEMS: { flag: ConsentFlag; title: string; description: string; icon: typeof Database }[] = [
+  {
+    flag: 'analytics',
+    title: 'Activity analytics',
+    description: 'Let us record how you use the app (pages, blog reading, chat) to improve your experience.',
+    icon: Database,
+  },
+  {
+    flag: 'profiling',
+    title: 'Personalized health insights',
+    description: 'Allow AI to analyze your uploaded documents to surface relevant, curated health recommendations. Processes health data.',
+    icon: Sparkles,
+  },
+  {
+    flag: 'marketingEmail',
+    title: 'Marketing emails',
+    description: 'Receive occasional health tips and recommendations by email. You can unsubscribe at any time.',
+    icon: Mail,
+  },
+];
 
 export function PatientSettingsPage() {
   const navigate = useNavigate();
@@ -17,6 +43,37 @@ export function PatientSettingsPage() {
     darkMode: false,
     language: 'en',
   });
+
+  const [consent, setConsent] = useState<ConsentFlags | null>(null);
+  const [consentError, setConsentError] = useState<string | null>(null);
+  const [savingFlag, setSavingFlag] = useState<ConsentFlag | null>(null);
+
+  useEffect(() => {
+    consentApi
+      .get()
+      .then(setConsent)
+      .catch(() => setConsentError('Could not load your privacy settings.'));
+  }, []);
+
+  const toggleConsent = async (flag: ConsentFlag, value: boolean) => {
+    if (!consent) return;
+    setConsentError(null);
+    setSavingFlag(flag);
+    const previous = consent;
+    setConsent({ ...consent, [flag]: value }); // optimistic
+    try {
+      const updated = await consentApi.update({ [flag]: value });
+      setConsent(updated);
+      // Sync the in-memory activity tracker immediately so toggling analytics
+      // takes effect without a page reload.
+      if (flag === 'analytics') setTrackingEnabled(value);
+    } catch {
+      setConsent(previous); // revert
+      setConsentError('Could not save that change. Please try again.');
+    } finally {
+      setSavingFlag(null);
+    }
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -130,6 +187,49 @@ export function PatientSettingsPage() {
                   setSettings({ ...settings, darkMode: checked })
                 }
               />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl shadow-lg p-6 space-y-4">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 bg-[#E8F5E9] rounded-xl flex items-center justify-center">
+                <Database className="w-5 h-5 text-[#4CAF50]" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">Data & Personalization</h2>
+                <p className="text-sm text-gray-500">Control how your data is used. You can change these anytime.</p>
+              </div>
+            </div>
+
+            {consentError && (
+              <div className="rounded-xl bg-red-50 text-red-700 text-sm px-4 py-2">{consentError}</div>
+            )}
+
+            <div className="space-y-4">
+              {CONSENT_ITEMS.map((item, idx) => {
+                const Icon = item.icon;
+                return (
+                  <div
+                    key={item.flag}
+                    className={`flex items-start justify-between gap-4 py-3 ${
+                      idx < CONSENT_ITEMS.length - 1 ? 'border-b border-gray-100' : ''
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <Icon className="w-5 h-5 text-gray-400 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="font-medium text-gray-900">{item.title}</p>
+                        <p className="text-sm text-gray-500">{item.description}</p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={consent?.[item.flag] ?? false}
+                      disabled={!consent || savingFlag === item.flag}
+                      onCheckedChange={(checked) => toggleConsent(item.flag, checked)}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
 

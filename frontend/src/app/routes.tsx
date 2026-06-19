@@ -1,4 +1,5 @@
 import { createBrowserRouter } from 'react-router';
+import { TelemetryRoot } from './components/TelemetryRoot';
 import { RoleSelectionPage } from './pages/RoleSelectionPage';
 import { StaffLoginPage } from './pages/StaffLoginPage';
 import { RequireAuth } from '../lib/RequireAuth';
@@ -40,8 +41,13 @@ import { AdminDashboardPage } from './pages/admin/AdminDashboardPage';
 import { AdminStaffPage } from './pages/admin/AdminStaffPage';
 import { AdminBillingPage } from './pages/admin/AdminBillingPage';
 import { AdminSettingsPage } from './pages/admin/AdminSettingsPage';
+import { AdminContentPage } from './pages/admin/AdminContentPage';
 
 export const router = createBrowserRouter([
+  {
+    // Pathless root: hosts app-wide telemetry (and renders every route via Outlet).
+    element: <TelemetryRoot />,
+    children: [
   { path: '/', Component: RoleSelectionPage },
   { path: '/auth/staff-login', Component: StaffLoginPage },
 
@@ -123,8 +129,11 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: AdminDashboardPage },
       { path: 'staff', Component: AdminStaffPage },
+      { path: 'content', Component: AdminContentPage },
       { path: 'billing', Component: AdminBillingPage },
       { path: 'settings', Component: AdminSettingsPage },
+    ],
+  },
     ],
   },
 ]);

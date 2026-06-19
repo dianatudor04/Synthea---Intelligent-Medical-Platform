@@ -15,6 +15,7 @@ import {
 import { Button } from './ui/button';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Badge } from './ui/badge';
+import { FloatingChatbot } from './patient/FloatingChatbot';
 
 const navigationItems = [
   { path: '/patient', label: 'Home', icon: Home },
@@ -37,6 +38,9 @@ export function PatientLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Global assistant + recommendation balloon (all patient pages) */}
+      <FloatingChatbot />
 
       {/* Mobile Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 h-20 bg-white/80 backdrop-blur-xl border-t border-gray-200/50 z-40 lg:hidden safe-area-bottom shadow-2xl">

@@ -12,6 +12,8 @@ import {
   deleteObject,
 } from '../services/storage.service';
 import { processPatientUpload } from '../services/ocr-pipeline.service';
+import { enqueue } from '../services/queue.service';
+import { isQueueEnabled } from '../config/queue';
 import { ALLOWED_CATEGORIES } from '../validators/upload.validator';
 
 const MAX_BYTES = env.MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -170,10 +172,18 @@ export const createUpload = async (req: AuthRequest, res: Response, next: NextFu
               hasExtractedText: false,
             });
 
-            // Fire-and-forget OCR. Failures are logged inside the pipeline.
-            processPatientUpload(row.id).catch((err) => {
-              logger.warn(`OCR pipeline rejected for ${row.id}`, { error: err });
-            });
+            // Hand off processing to the async worker: extractText runs OCR,
+            // then (if the patient has profiling consent) enqueues embedDocument.
+            // Falls back to inline OCR when no queue (Redis) is configured.
+            if (isQueueEnabled()) {
+              enqueue('extractText', { documentId: row.id }).catch((err) => {
+                logger.warn(`Failed to enqueue extractText for ${row.id}`, { error: err });
+              });
+            } else {
+              processPatientUpload(row.id).catch((err) => {
+                logger.warn(`OCR pipeline rejected for ${row.id}`, { error: err });
+              });
+            }
           } catch (dbErr) {
             // DB write failed — try to clean up the orphaned object.
             await deleteObject(key);

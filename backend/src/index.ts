@@ -25,6 +25,11 @@ import reviewRoutes from './routes/review.routes';
 import serviceRoutes from './routes/service.routes';
 import uploadRoutes from './routes/upload.routes';
 import interactionRoutes from './routes/interaction.routes';
+import consentRoutes from './routes/consent.routes';
+import eventRoutes from './routes/event.routes';
+import recommendationRoutes from './routes/recommendation.routes';
+import poolRoutes from './routes/pool.routes';
+import emailRoutes from './routes/email.routes';
 
 const app = express();
 
@@ -58,6 +63,9 @@ const limiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
+  // Event ingestion flushes frequently and has its own (higher) limiter, so it
+  // must not consume the general API budget and lock users out.
+  skip: (req) => req.originalUrl.startsWith('/api/events'),
 });
 app.use('/api', limiter);
 
@@ -104,6 +112,11 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/interactions', interactionRoutes);
+app.use('/api/consent', consentRoutes);
+app.use('/api/events', eventRoutes);
+app.use('/api/recommendations', recommendationRoutes);
+app.use('/api/pools', poolRoutes);
+app.use('/api/email', emailRoutes);
 
 // ─── 404 Handler ──────────────────────────────────────
 app.use('*', (_req, res) => {

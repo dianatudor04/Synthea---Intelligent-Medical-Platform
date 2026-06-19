@@ -2,6 +2,7 @@ import { motion } from 'motion/react';
 import { ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { Button } from '../ui/button';
+import { trackEvent } from '../../../lib/events';
 
 interface BlogPost {
   id: string;
@@ -70,7 +71,14 @@ export function BlogSection() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
               whileHover={{ y: -4 }}
-              onClick={() => navigate('/patient/blog')}
+              onClick={() => {
+                trackEvent('blog_open', {
+                  postId: post.id,
+                  category: post.category,
+                  title: post.title,
+                });
+                navigate('/patient/blog');
+              }}
               className="bg-white rounded-2xl shadow-sm overflow-hidden cursor-pointer hover:shadow-lg transition-all border border-gray-100"
             >
               <div className="h-40 overflow-hidden relative">

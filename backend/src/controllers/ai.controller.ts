@@ -4,6 +4,8 @@ import { ApiError } from '../middleware/error.middleware';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { aiService } from '../services/ai.service';
 import { getPatientUploadContext } from '../services/upload-context.service';
+import { retrieveRelevantChunks } from '../services/retrieval.service';
+import { embeddingsEnabled } from '../services/embedding.service';
 
 // POST /api/ai/chat
 export const chatWithBot = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -22,17 +24,26 @@ export const chatWithBot = async (req: AuthRequest, res: Response, next: NextFun
     // pass them as context to the LLM. Only includes processed files with
     // extracted text.
     let patientUploads = undefined;
+    let retrievedChunks = undefined;
     if (req.user?.role === 'PATIENT') {
       const profile = await prisma.patientProfile.findUnique({
         where: { userId: req.user.id },
         select: { id: true },
       });
       if (profile) {
-        patientUploads = await getPatientUploadContext(profile.id, { onlyWithText: true });
+        // Prefer semantic retrieval over the patient's embedded documents.
+        if (embeddingsEnabled()) {
+          retrievedChunks = await retrieveRelevantChunks(profile.id, message, 5);
+        }
+        // Fall back to recent-file concat when there are no embedded chunks
+        // (embeddings off, or this patient hasn't consented to profiling).
+        if (!retrievedChunks || retrievedChunks.length === 0) {
+          patientUploads = await getPatientUploadContext(profile.id, { onlyWithText: true });
+        }
       }
     }
 
-    const reply = await aiService.chat(message, messages, { patientUploads });
+    const reply = await aiService.chat(message, messages, { patientUploads, retrievedChunks });
 
     messages.push(
       { role: 'user', content: message, timestamp: new Date().toISOString() },

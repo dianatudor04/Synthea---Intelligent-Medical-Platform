@@ -12,3 +12,9 @@ Thumbs.db
 
 # DDInter dataset (large; download via backend/data/ddinter/download.sh)
 backend/data/ddinter/*.csv
+
+# Screenshot tooling deps (Playwright) + LaTeX build artifacts
+tools/screenshots/node_modules/
+docs/*.aux
+docs/*.log
+docs/*.out

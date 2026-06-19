@@ -19,6 +19,11 @@ import {
   UserProfile,
   UploadCategory,
   DrugInteraction,
+  ConsentFlags,
+  PendingRecommendation,
+  Pool,
+  PoolItem,
+  GapOffer,
 } from './types';
 
 // ─── Patients ────────────────────────────────────────────────────────
@@ -55,6 +60,40 @@ export const interactionsApi = {
     api.post<{ interactions: DrugInteraction[]; count: number }>('/interactions/check', { drugs }),
 };
 
+// ─── Consent (GDPR flags) ────────────────────────────────────────────
+export const consentApi = {
+  get: () => api.get<ConsentFlags>('/consent'),
+  update: (patch: Partial<Pick<ConsentFlags, 'analytics' | 'profiling' | 'marketingEmail'>>) =>
+    api.put<ConsentFlags>('/consent', patch),
+};
+
+// ─── Recommendations (curated, delivered in the balloon) ─────────────
+export const recommendationsApi = {
+  pending: () => api.get<{ data: PendingRecommendation[] }>('/recommendations/pending'),
+  ack: (id: string, channel: 'BALLOON' | 'EMAIL' = 'BALLOON') =>
+    api.post<{ acknowledged: boolean }>(`/recommendations/${id}/ack`, { channel }),
+  dismiss: (id: string) => api.post<{ dismissed: boolean }>(`/recommendations/${id}/dismiss`),
+};
+
+// ─── Recommendation pools (admin editorial CRUD) ─────────────────────
+export const poolsApi = {
+  list: () => api.get<{ data: Pool[] }>('/pools'),
+  createPool: (input: { tag: string; title: string; description?: string; active?: boolean }) =>
+    api.post<Pool>('/pools', input),
+  updatePool: (id: string, input: Partial<{ title: string; description: string | null; active: boolean }>) =>
+    api.patch<Pool>(`/pools/${id}`, input),
+  deletePool: (id: string) => api.del<void>(`/pools/${id}`),
+  createItem: (
+    poolId: string,
+    input: { adviceText: string; ctaLabel?: string; ctaUrl?: string; serviceId?: string; active?: boolean },
+  ) => api.post<PoolItem>(`/pools/${poolId}/items`, input),
+  updateItem: (
+    itemId: string,
+    input: Partial<{ adviceText: string; ctaLabel: string | null; ctaUrl: string | null; active: boolean }>,
+  ) => api.patch<PoolItem>(`/pools/items/${itemId}`, input),
+  deleteItem: (itemId: string) => api.del<void>(`/pools/items/${itemId}`),
+};
+
 // ─── Doctors ─────────────────────────────────────────────────────────
 export const doctorsApi = {
   list: (params: { specialty?: string; acceptsNewPatients?: boolean; page?: number; limit?: number } = {}) =>
@@ -88,12 +127,13 @@ export const appointmentsApi = {
   list: (params: { page?: number; limit?: number; doctorId?: string; patientId?: string; status?: string; date?: string } = {}) =>
     api.get<Paginated<Appointment>>('/appointments', params),
   get: (id: string) => api.get<Appointment>(`/appointments/${id}`),
-  create: (input: { patientId: string; doctorId: string; serviceId?: string; scheduledAt: string; duration?: number; reason?: string; notes?: string; roomNumber?: string }) =>
+  create: (input: { patientId: string; doctorId: string; serviceId?: string; scheduledAt: string; duration?: number; reason?: string; notes?: string; roomNumber?: string; applyGapDiscount?: boolean }) =>
     api.post<Appointment>('/appointments', input),
   update: (id: string, input: Partial<Appointment>) => api.put<Appointment>(`/appointments/${id}`, input),
   cancel: (id: string) => api.del<Appointment>(`/appointments/${id}/cancel`),
   availableSlots: (doctorId: string, date: string) =>
     api.get<AvailableSlot[]>('/appointments/available-slots', { doctorId, date }),
+  gapOffer: () => api.get<{ offer: GapOffer | null }>('/appointments/gap-offer'),
   optimizedSchedule: (params: { doctorId?: string; date?: string }) =>
     api.get<{ appointments: Appointment[]; optimization: Record<string, unknown> }>('/appointments/optimized-schedule', params),
 };

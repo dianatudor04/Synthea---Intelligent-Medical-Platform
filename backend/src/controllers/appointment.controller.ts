@@ -1,8 +1,10 @@
 import { Response, NextFunction } from 'express';
 import { prisma } from '../config/database';
+import { env } from '../config/env';
 import { ApiError } from '../middleware/error.middleware';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { appointmentService } from '../services/appointment.service';
+import { findGapOfferForPatient } from '../services/gap-offer.service';
 
 // GET /api/appointments
 export const getAllAppointments = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -66,7 +68,8 @@ export const getAppointmentById = async (req: AuthRequest, res: Response, next: 
 // POST /api/appointments
 export const createAppointment = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const { patientId, doctorId, serviceId, scheduledAt, duration, reason, notes, roomNumber } = req.body;
+    const { patientId, doctorId, serviceId, scheduledAt, duration, reason, notes, roomNumber, applyGapDiscount } =
+      req.body;
 
     let durationFinal = duration ?? 30;
     let feeAtBooking: number | null = null;
@@ -81,6 +84,25 @@ export const createAppointment = async (req: AuthRequest, res: Response, next: N
       feeAtBooking = doctorProfile?.consultationFee ?? null;
     }
 
+    // Gap-fill discount: only honored when the slot is genuinely in the late
+    // discount window — the percent comes from config, never the client. This
+    // ties the discount to off-peak slots and prevents abusing it for any time.
+    let originalFee: number | null = null;
+    let discountPct: number | null = null;
+    let discountReason: string | null = null;
+    const slotHour = new Date(scheduledAt).getHours();
+    if (
+      applyGapDiscount &&
+      feeAtBooking != null &&
+      env.SLOT_GAP_DISCOUNT_PCT > 0 &&
+      slotHour >= env.SLOT_GAP_START_HOUR
+    ) {
+      originalFee = feeAtBooking;
+      discountPct = env.SLOT_GAP_DISCOUNT_PCT;
+      discountReason = 'GAP_FILL';
+      feeAtBooking = Math.round(feeAtBooking * (1 - discountPct / 100) * 100) / 100;
+    }
+
     const appointment = await prisma.appointment.create({
       data: {
         patientId,
@@ -92,12 +114,37 @@ export const createAppointment = async (req: AuthRequest, res: Response, next: N
         notes,
         roomNumber,
         feeAtBooking,
+        originalFee,
+        discountPct,
+        discountReason,
       },
       include: {
         service: { select: { id: true, name: true, durationMin: true, basePrice: true } },
       },
     });
     res.status(201).json(appointment);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/appointments/gap-offer — a discounted off-peak slot for the caller
+// (patient). Returns { offer: null } when none applies.
+export const getGapOffer = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (req.user?.role !== 'PATIENT') {
+      res.json({ offer: null });
+      return;
+    }
+    const profile = await prisma.patientProfile.findUnique({
+      where: { userId: req.user.id },
+      select: { id: true },
+    });
+    if (!profile) {
+      res.json({ offer: null });
+      return;
+    }
+    res.json({ offer: await findGapOfferForPatient(profile.id) });
   } catch (err) {
     next(err);
   }

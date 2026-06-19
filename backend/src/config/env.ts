@@ -19,6 +19,23 @@ const envSchema = z.object({
   LOG_LEVEL: z.string().default('info'),
   REDIS_URL: z.string().optional(),
 
+  // ─── Embeddings (via OpenRouter, OpenAI-compatible) ─────
+  EMBEDDING_MODEL: z.string().default('openai/text-embedding-3-small'),
+
+  // ─── Email (Nodemailer → Mailpit in dev) ────────────────
+  SMTP_HOST: z.string().default('localhost'),
+  SMTP_PORT: z.coerce.number().default(1025),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().default('Synthea <no-reply@synthea.local>'),
+  APP_PUBLIC_URL: z.string().default('http://localhost:3000'),   // frontend (CTA links)
+  API_PUBLIC_URL: z.string().default('http://localhost:5000'),   // backend (unsubscribe link)
+  EMAIL_MARKETING_ENABLED: z.coerce.boolean().default(true),
+
+  // ─── Gap-fill discount (AI assistant off-peak slot offers) ──
+  SLOT_GAP_DISCOUNT_PCT: z.coerce.number().int().min(0).max(90).default(20),
+  SLOT_GAP_START_HOUR: z.coerce.number().int().min(0).max(23).default(17),
+
   // ─── RustFS (S3-compatible object storage) ──────────────
   RUSTFS_ENDPOINT: z.string().default('http://localhost:9000'),
   RUSTFS_PUBLIC_ENDPOINT: z.string().optional(),               // host-reachable endpoint for presigned URLs
@@ -30,7 +47,7 @@ const envSchema = z.object({
 
   // ─── OpenRouter (LLM provider for the patient chatbot) ──
   OPENROUTER_API_KEY: z.string().optional(),
-  OPENROUTER_MODEL: z.string().default('google/gemini-2.0-flash-001'),
+  OPENROUTER_MODEL: z.string().default('openai/gpt-4o-mini'),
   OPENROUTER_REFERER: z.string().default('http://localhost:3000'),
   OPENROUTER_TITLE: z.string().default('Synthea Medical Platform'),
 });

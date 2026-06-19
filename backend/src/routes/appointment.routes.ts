@@ -7,6 +7,7 @@ import {
   cancelAppointment,
   getAvailableSlots,
   getOptimizedSchedule,
+  getGapOffer,
 } from '../controllers/appointment.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import { validate } from '../validators/validate';
@@ -18,6 +19,7 @@ router.use(authenticate);
 
 router.get('/', getAllAppointments);
 router.get('/available-slots', getAvailableSlots);
+router.get('/gap-offer', getGapOffer);
 router.get('/optimized-schedule', authorize('ADMIN', 'DOCTOR'), getOptimizedSchedule);
 router.post('/', validate(createAppointmentSchema), createAppointment);
 router.get('/:id', getAppointmentById);

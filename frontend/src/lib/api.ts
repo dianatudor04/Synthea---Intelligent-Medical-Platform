@@ -156,6 +156,7 @@ export const api = {
   post: <T>(path: string, body?: unknown, opts?: Partial<RequestOptions>) =>
     rawRequest<T>(path, { method: 'POST', body, ...opts }),
   put: <T>(path: string, body?: unknown) => rawRequest<T>(path, { method: 'PUT', body }),
+  patch: <T>(path: string, body?: unknown) => rawRequest<T>(path, { method: 'PATCH', body }),
   del: <T>(path: string) => rawRequest<T>(path, { method: 'DELETE' }),
   upload: <T>(path: string, formData: FormData) =>
     rawRequest<T>(path, { method: 'POST', body: formData, isFormData: true }),

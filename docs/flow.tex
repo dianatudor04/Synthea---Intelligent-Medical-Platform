@@ -1,0 +1,161 @@
+% =====================================================================
+%  Synthea — Flux reprezentativ end-to-end (scaffolding pentru teză)
+%  Compilare:  cd docs && pdflatex flow.tex
+%  Figurile sunt în docs/figures/ (capturate cu tools/screenshots).
+% =====================================================================
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[romanian]{babel}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\usepackage{subcaption}   % subfigure / subfloat
+\usepackage{float}        % [H] placement
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+
+\graphicspath{{figures/}}
+
+% Înălțime uniformă pentru capturile portret (mobil) așezate două pe rând.
+\newcommand{\phoneshot}[1]{\includegraphics[height=8.2cm,keepaspectratio]{#1}}
+% Lățime uniformă pentru capturile peisaj (desktop).
+\newcommand{\deskshot}[1]{\includegraphics[width=\linewidth]{#1}}
+
+\title{Synthea --- Flux reprezentativ end-to-end\\\large Capturi de ecran adnotate (scaffolding teză)}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+Acest document prezintă, pas cu pas, un flux reprezentativ pentru un pacient nou:
+\emph{înregistrare / autentificare $\rightarrow$ tablou de bord $\rightarrow$ încărcare document (OCR)
+$\rightarrow$ întrebare către asistentul conversațional $\rightarrow$ primirea unei recomandări curate
+$\rightarrow$ ofertă de programare cu reducere $\rightarrow$ programare}. Capturile au fost realizate automat
+din aplicația rulând local (Playwright + Chromium). Fluxurile pentru medic și administrator
+sunt incluse pe scurt în secțiunile~\ref{sec:doctor} și~\ref{sec:admin}.
+
+% ---------------------------------------------------------------------
+\section{Fluxul pacientului}\label{sec:patient}
+
+\paragraph{1. Autentificare și tablou de bord.}
+Pacientul se autentifică (Figura~\ref{fig:auth-a}) și ajunge pe tabloul de bord personal
+(Figura~\ref{fig:auth-b}), unde are acces la calendar, fișiere medicale și acțiunea de programare.
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[t]{0.46\textwidth}
+    \centering \phoneshot{01-login.png}
+    \caption{Ecranul de autentificare al pacientului.}
+    \label{fig:auth-a}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.46\textwidth}
+    \centering \phoneshot{02-dashboard.png}
+    \caption{Tabloul de bord al pacientului după autentificare.}
+    \label{fig:auth-b}
+  \end{subfigure}
+  \caption{Autentificarea pacientului și tabloul de bord personal.}
+  \label{fig:auth}
+\end{figure}
+
+\paragraph{2. Încărcare document și asistent conversațional.}
+Pacientul încarcă un document medical (Figura~\ref{fig:docs-a}); fișierul este trimis în
+RustFS, iar textul este extras prin OCR (\texttt{ron}) și inclus, după consimțământ, în
+conducta de personalizare. Asistentul conversațional (Figura~\ref{fig:docs-b}) răspunde în limba
+română folosind regăsirea semantică peste documentele proprii ale pacientului.
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[t]{0.46\textwidth}
+    \centering \phoneshot{03-upload.png}
+    \caption{Secțiunea de fișiere medicale și încărcare (OCR).}
+    \label{fig:docs-a}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.46\textwidth}
+    \centering \phoneshot{04-chatbot.png}
+    \caption{Întrebare către asistent și răspuns generat.}
+    \label{fig:docs-b}
+  \end{subfigure}
+  \caption{Încărcarea documentelor și interacțiunea cu asistentul conversațional.}
+  \label{fig:docs}
+\end{figure}
+
+\paragraph{3. Livrare personalizată: recomandare curată și ofertă cu reducere.}
+Pe baza semnalelor extrase din documente, balonul asistentului afișează o recomandare curată
+(Figura~\ref{fig:deliver-a}), arătând textul editorial verbatim împreună cu justificarea
+(\emph{,,de ce văd asta''}). Separat, atunci când programul unui medic ar avea un gol,
+asistentul oferă proactiv un slot la oră redusă, cu reducere (Figura~\ref{fig:deliver-b}).
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[t]{0.46\textwidth}
+    \centering \phoneshot{05-recommendation.png}
+    \caption{Recomandare curată livrată în balon, cu justificare.}
+    \label{fig:deliver-a}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.46\textwidth}
+    \centering \phoneshot{06-gap-offer.png}
+    \caption{Ofertă de slot la oră redusă, cu reducere (umplerea unui gol în program).}
+    \label{fig:deliver-b}
+  \end{subfigure}
+  \caption{Livrarea personalizată prin balonul asistentului: recomandare editorială și ofertă de programare cu reducere.}
+  \label{fig:deliver}
+\end{figure}
+
+\paragraph{4. Programare.}
+Pacientul finalizează printr-o programare (Figura~\ref{fig:booking}), fie acceptând oferta cu
+reducere dintr-un singur clic, fie parcurgând asistentul de programare în patru pași
+(specialitate $\rightarrow$ serviciu $\rightarrow$ medic $\rightarrow$ dată și oră).
+
+\begin{figure}[H]
+  \centering
+  \phoneshot{07-booking.png}
+  \caption{Modalul de programare (pasul 1: alegerea specialității).}
+  \label{fig:booking}
+\end{figure}
+
+% ---------------------------------------------------------------------
+\section{Fluxul medicului (opțional)}\label{sec:doctor}
+Medicul vede lista de pacienți și fișa unui pacient, unde poate emite o nouă fișă medicală
+(Figura~\ref{fig:doctor}).
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[t]{0.48\textwidth}
+    \centering \deskshot{08-doctor-dashboard.png}
+    \caption{Tabloul de bord al medicului.}
+    \label{fig:doctor-a}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.48\textwidth}
+    \centering \deskshot{09-doctor-patient.png}
+    \caption{Fișa unui pacient (vizualizare medic).}
+    \label{fig:doctor-b}
+  \end{subfigure}
+  \caption{Spațiul de lucru al medicului: tablou de bord și fișa pacientului.}
+  \label{fig:doctor}
+\end{figure}
+
+% ---------------------------------------------------------------------
+\section{Fluxul administratorului (opțional)}\label{sec:admin}
+Administratorul gestionează conținutul editorial (pool-urile de recomandări) dintr-o interfață
+dedicată, asigurând controlul redacțional asupra fiecărui mesaj livrat pacienților
+(Figura~\ref{fig:admin}).
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[t]{0.48\textwidth}
+    \centering \deskshot{11-admin-dashboard.png}
+    \caption{Tabloul de bord al administratorului.}
+    \label{fig:admin-a}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.48\textwidth}
+    \centering \deskshot{12-admin-content.png}
+    \caption{Gestiunea pool-urilor de conținut editorial.}
+    \label{fig:admin-b}
+  \end{subfigure}
+  \caption{Spațiul de lucru al administratorului: tablou de bord și gestiunea conținutului.}
+  \label{fig:admin}
+\end{figure}
+
+\end{document}

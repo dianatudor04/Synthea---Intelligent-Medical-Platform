@@ -7,7 +7,6 @@ import { CalendarSection } from '../../components/patient/CalendarSection';
 import { AppointmentsSection } from '../../components/patient/AppointmentsSection';
 import { MedicalFilesSection } from '../../components/patient/MedicalFilesSection';
 import { BlogSection } from '../../components/patient/BlogSection';
-import { FloatingChatbot } from '../../components/patient/FloatingChatbot';
 import { BookAppointmentModal } from '../../components/patient/BookAppointmentModal';
 import { useAuth } from '../../../lib/auth';
 
@@ -69,8 +68,6 @@ export function PatientHomePage() {
           </div>
         </div>
       </div>
-
-      <FloatingChatbot />
 
       <BookAppointmentModal
         isOpen={showBookingModal}

@@ -128,6 +128,66 @@ export type DrugInteraction = {
   level: InteractionLevel;
 };
 
+// GDPR consent flags. Each gates a distinct capability server-side:
+//  - analytics:      activity/event ingestion
+//  - profiling:      embeddings + AI signal extraction (special-category data)
+//  - marketingEmail: marketing/digest email (separate opt-in)
+export type ConsentFlags = {
+  analytics: boolean;
+  profiling: boolean;
+  marketingEmail: boolean;
+  version: number;
+};
+
+// Editorial recommendation pools (admin-curated).
+export type PoolItem = {
+  id: string;
+  poolId: string;
+  adviceText: string;
+  ctaLabel: string | null;
+  ctaUrl: string | null;
+  serviceId: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Pool = {
+  id: string;
+  tag: string;
+  title: string;
+  description: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  items: PoolItem[];
+};
+
+// A discounted off-peak slot the AI assistant proactively offers to fill a gap.
+export type GapOffer = {
+  doctorId: string;
+  doctorName: string;
+  specialty: string;
+  slot: string;
+  durationMin: number;
+  currency: string;
+  originalFee: number;
+  discountPct: number;
+  discountedFee: number;
+};
+
+// A ready-to-show curated recommendation (delivered via the chatbot balloon).
+export type PendingRecommendation = {
+  id: string;
+  tag: string;
+  basis: string | null;   // "why am I seeing this"
+  title: string;
+  advice: string;         // curated pool text — shown verbatim
+  ctaLabel: string | null;
+  ctaUrl: string | null;
+  createdAt: string;
+};
+
 export type Invoice = {
   id: string;
   patientId: string;

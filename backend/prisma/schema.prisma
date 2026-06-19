@@ -3,12 +3,14 @@
 // ─────────────────────────────────────────────
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
 }
 
 // ─────────────────────────────────────────────
@@ -52,6 +54,17 @@ enum TriageLevel {
   ROUTINE
 }
 
+enum RecommendationStatus {
+  PENDING
+  DELIVERED
+  DISMISSED
+}
+
+enum DeliveryChannel {
+  BALLOON
+  EMAIL
+}
+
 // ─────────────────────────────────────────────
 //  User
 //  Single auth table for all humans in the system.
@@ -92,7 +105,87 @@ model User {
   // 1-to-many: every action logged for GDPR
   auditLogs              AuditLog[]
 
+  // 1-to-1: GDPR consent flags (analytics / profiling / marketing)
+  consent                UserConsent?
+
+  // 1-to-many: append-only history of consent changes
+  consentAudits          ConsentAudit[]
+
+  // 1-to-many: append-only activity/analytics events (gated on analytics consent)
+  activityEvents         ActivityEvent[]
+
+  // 1-to-many: extracted health-interest signals (gated on profiling consent)
+  signals                UserSignal[]
+
+  // 1-to-many: generated/delivered content recommendations
+  recommendations        Recommendation[]
+
   @@map("users")
+}
+
+// ─────────────────────────────────────────────
+//  UserConsent
+//  Per-user GDPR consent flags. Each flag gates a different capability:
+//   - analytics:      activity/event ingestion
+//   - profiling:      embedding + signal extraction (special-category data)
+//   - marketingEmail: marketing/digest email (separate opt-in, must be revocable)
+//  Defaults are FALSE — nothing personalization-related runs without opt-in.
+// ─────────────────────────────────────────────
+
+model UserConsent {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  analytics      Boolean  @default(false)
+  profiling      Boolean  @default(false)
+  marketingEmail Boolean  @default(false)
+  version        Int      @default(1)        // consent text version in force when set
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_consents")
+}
+
+// ─────────────────────────────────────────────
+//  ConsentAudit — append-only provenance of every consent change.
+//  Answers "when did this user grant/revoke X, and from where".
+// ─────────────────────────────────────────────
+
+model ConsentAudit {
+  id        String   @id @default(uuid())
+  userId    String
+  flag      String                            // "analytics" | "profiling" | "marketingEmail"
+  value     Boolean
+  ipAddress String?
+  at        DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("consent_audits")
+}
+
+// ─────────────────────────────────────────────
+//  ActivityEvent — append-only stream of user activity (route changes,
+//  blog interactions, chat messages). Writes are fast and dumb; all
+//  derivation happens later in workers, not in the request.
+//  Gated on the `analytics` consent flag. If volume grows, time-partition
+//  this table by createdAt.
+// ─────────────────────────────────────────────
+
+model ActivityEvent {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String                            // e.g. "route_change", "blog_open", "chat_message"
+  payload   Json?                             // type-specific detail (path, postId, depth, …)
+  sessionId String?                           // client-generated session grouping
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, createdAt])
+  @@map("activity_events")
 }
 
 // ─────────────────────────────────────────────
@@ -124,6 +217,7 @@ model PatientProfile {
   ocrDocuments     OcrDocument[]
   triageRecords    TriageRecord[]
   reviews          Review[]
+  documentChunks   DocumentChunk[]
 
   @@map("patient_profiles")
 }
@@ -175,7 +269,10 @@ model Appointment {
   reason        String?
   notes         String?
   roomNumber    String?
-  feeAtBooking  Float?                              // snapshot of fee at booking time
+  feeAtBooking  Float?                              // snapshot of fee at booking time (final, post-discount)
+  originalFee   Float?                              // pre-discount fee, when a discount was applied
+  discountPct   Int?                                // discount percent applied (e.g. 20)
+  discountReason String?                            // e.g. "GAP_FILL" — why the discount was given
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
@@ -323,9 +420,132 @@ model OcrDocument {
 
   patient        PatientProfile @relation(fields: [patientId], references: [id])
 
+  // Embedding chunks derived from extractedText (gated on profiling consent)
+  chunks         DocumentChunk[]
+
+  // Health-interest signals derived from this document (cascade-deleted with it)
+  signals        UserSignal[]
+
   @@index([patientId])
   @@index([source])
   @@map("ocr_documents")
+}
+
+// ─────────────────────────────────────────────
+//  DocumentChunk — chunked + embedded slices of an OcrDocument's extracted
+//  text. Vectors live in pgvector (1536-dim, OpenAI text-embedding-3-small)
+//  and are written/queried via raw SQL (Prisma can't yet bind the vector type).
+//  This store doubles as the chatbot's retrieval layer.
+//  HNSW cosine index is added in the migration (not expressible in Prisma).
+// ─────────────────────────────────────────────
+
+// ─────────────────────────────────────────────
+//  UserSignal — structured health-interest tags extracted by the LLM from a
+//  patient's documents (e.g. { tag: "lower_back_pain", confidence: 0.8 }).
+//  Special-category processing → gated on profiling consent.
+//  Deliberately SEPARATE from clinical records (no FK to MedicalRecord): this
+//  is personalization data, not a clinical fact. `source`/`basis`/`sourceDocId`
+//  capture provenance so we can later answer "why am I seeing this".
+// ─────────────────────────────────────────────
+
+model UserSignal {
+  id          String   @id @default(uuid())
+  userId      String
+  tag         String                            // canonical snake_case topic
+  confidence  Float                             // 0..1
+  source      String                            // e.g. "document"
+  basis       String?                           // short human-readable justification
+  sourceDocId String?                           // OcrDocument.id the signal came from
+  createdAt   DateTime @default(now())
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Right-to-erasure: deleting the source document removes its derived signals.
+  sourceDoc   OcrDocument? @relation(fields: [sourceDocId], references: [id], onDelete: Cascade)
+
+  @@index([userId, tag])
+  @@index([sourceDocId])
+  @@map("user_signals")
+}
+
+// ─────────────────────────────────────────────
+//  Recommendation pools — hand-authored, editorially-controlled content keyed
+//  by signal tag. A user with a signal `tag` above threshold is eligible for
+//  the pool with that tag. Matching is a simple, explainable rule (no ML).
+// ─────────────────────────────────────────────
+
+model Pool {
+  id          String   @id @default(uuid())
+  tag         String   @unique                  // matches UserSignal.tag
+  title       String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items       PoolItem[]
+
+  @@map("pools")
+}
+
+model PoolItem {
+  id         String   @id @default(uuid())
+  poolId     String
+  adviceText String                              // curated, clinician-endorsed copy
+  ctaLabel   String?                             // call-to-action button text
+  ctaUrl     String?                             // where the CTA points
+  serviceId  String?                             // optional link to a MedicalService
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  pool            Pool             @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  recommendations Recommendation[]
+
+  @@index([poolId])
+  @@map("pool_items")
+}
+
+// ─────────────────────────────────────────────
+//  Recommendation — generated ahead of time by a job, then read by the
+//  delivery channels (balloon / email). Status tracks the lifecycle and the
+//  table doubles as the delivery log used for dedupe + frequency-capping.
+//  signalTag/signalBasis answer "why am I seeing this".
+// ─────────────────────────────────────────────
+
+model Recommendation {
+  id          String               @id @default(uuid())
+  userId      String
+  poolItemId  String
+  status      RecommendationStatus @default(PENDING)
+  channel     DeliveryChannel?                    // set when delivered
+  signalTag   String                              // the signal that triggered it
+  signalBasis String?                             // provenance for "why"
+  createdAt   DateTime             @default(now())
+  deliveredAt DateTime?
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  poolItem    PoolItem @relation(fields: [poolItemId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([userId, deliveredAt])
+  @@map("recommendations")
+}
+
+model DocumentChunk {
+  id         String                       @id @default(uuid())
+  documentId String
+  patientId  String
+  chunkIndex Int
+  content    String
+  embedding  Unsupported("vector(1536)")?
+  createdAt  DateTime                     @default(now())
+
+  document   OcrDocument    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  patient    PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([patientId])
+  @@map("document_chunks")
 }
 
 // ─────────────────────────────────────────────
