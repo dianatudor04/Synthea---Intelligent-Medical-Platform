@@ -50,6 +50,66 @@ const ALLERGIES = ['Penicillin','Peanuts','Tree nuts','Shellfish','Eggs','Milk',
 const BLOOD = ['A+','A-','B+','B-','O+','O-','AB+','AB-'];
 const CITIES = ['București','Cluj-Napoca','Iași','Timișoara','Brașov','Constanța','Sibiu','Oradea','Galați','Ploiești'];
 
+// ─── Romanian-realistic field generators (CNP, address, insurance, contacts) ──
+// County (județ) code = digits 7-8 of the CNP, derived from the patient's city.
+const CITY_COUNTY: Record<string, string> = {
+  'București': '40', 'Cluj-Napoca': '12', 'Iași': '22', 'Timișoara': '35',
+  'Brașov': '08', 'Constanța': '13', 'Sibiu': '32', 'Oradea': '05',
+  'Galați': '17', 'Ploiești': '29',
+};
+const STREET_TYPES = ['Str.', 'Bd.', 'Aleea', 'Calea'];
+const STREETS = ['Aviatorilor','Unirii','Victoriei','Mihai Eminescu','Ion Creangă','Libertății','Primăverii','Castanilor','Crișan','Horea','Decebal','Traian','Ștefan cel Mare','Mircea cel Bătrân','Avram Iancu','Nicolae Bălcescu','Gheorghe Doja','Rozelor','Salcâmilor','Teilor'];
+const RELATIONS = ['soț','soție','fiu','fiică','frate','soră','părinte','rudă'];
+
+// Global running sequence so every generated CNP is unique (cnp is @unique).
+// Stays < 999 for the demo population, fitting the 3-digit CNP order number.
+let cnpSeq = 0;
+
+// CNP control key + checksum digit (digit 13).
+function cnpChecksum(d12: string): string {
+  const key = '279146358279';
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += Number(d12[i]) * Number(key[i]);
+  const r = sum % 11;
+  return String(r === 10 ? 1 : r);
+}
+
+// Valid 13-digit CNP consistent with the patient's gender, birth date and county.
+function generateCNP(gender: Gender, dob: Date, city: string): string {
+  const year = dob.getFullYear();
+  const s = year >= 2000 ? (gender === Gender.FEMALE ? 6 : 5) : (gender === Gender.FEMALE ? 2 : 1);
+  const yy = String(year % 100).padStart(2, '0');
+  const mm = String(dob.getMonth() + 1).padStart(2, '0');
+  const dd = String(dob.getDate()).padStart(2, '0');
+  const county = CITY_COUNTY[city] ?? '40';
+  const nnn = String((cnpSeq++ % 999) + 1).padStart(3, '0');
+  const d12 = `${s}${yy}${mm}${dd}${county}${nnn}`;
+  return d12 + cnpChecksum(d12);
+}
+
+function generateAddress(seed: number): string {
+  const t = STREET_TYPES[seed % STREET_TYPES.length];
+  const street = STREETS[(seed * 7) % STREETS.length];
+  const nr = 1 + ((seed * 13) % 180);
+  const bl = 1 + (seed % 40);
+  const ap = 1 + ((seed * 3) % 60);
+  return `${t} ${street} nr. ${nr}, bl. ${bl}, ap. ${ap}`;
+}
+
+function generateInsuranceNo(city: string, seed: number): string {
+  const county = CITY_COUNTY[city] ?? '40';
+  return `CAS-${county}-${String(100000 + ((seed * 37) % 900000)).padStart(6, '0')}`;
+}
+
+function generateEmergencyContact(seed: number): string {
+  const isMale = seed % 2 === 0;
+  const first = isMale ? FIRST_M[(seed * 3) % FIRST_M.length] : FIRST_F[(seed * 3) % FIRST_F.length];
+  const last = LAST[(seed * 5) % LAST.length];
+  const rel = RELATIONS[seed % RELATIONS.length];
+  const phone = `+407${String(55000000 + ((seed * 7) % 4000000)).padStart(8, '0')}`;
+  return `${first} ${last} (${rel}) — ${phone}`;
+}
+
 const REVIEW_COMMENTS_POSITIVE: (string | null)[] = [
   'Medic profesionist și empatic. Recomand cu încredere!',
   'Am primit explicații clare și un tratament eficient.',
@@ -482,7 +542,7 @@ async function seedDemoForLegacyDoctor(patientPasswordHash: string) {
   for (const a of ADDON_POOL) for (let i = 0; i < a.weight; i++) flatPool.push(a);
 
   // ─── Phase A: users / appointments / records / reviews ───────────────
-  if (!skipPhaseA) for (const dp of DEMO_PATIENTS) {
+  if (!skipPhaseA) for (const [dpIdx, dp] of DEMO_PATIENTS.entries()) {
     const dob = new Date();
     dob.setFullYear(dob.getFullYear() - dp.ageYears);
     dob.setMonth((dp.ageYears * 7) % 12);
@@ -510,9 +570,10 @@ async function seedDemoForLegacyDoctor(patientPasswordHash: string) {
           gender: dp.gender as Gender,
           bloodType: dp.bloodType,
           allergies: dp.allergies,
-          cnp: dp.cnp,
-          insuranceNo: dp.insuranceNo,
-          emergencyContact: dp.emergencyContact,
+          cnp: generateCNP(dp.gender as Gender, dob, dp.city),
+          insuranceNo: dp.insuranceNo ?? generateInsuranceNo(dp.city, dpIdx),
+          emergencyContact: dp.emergencyContact ?? generateEmergencyContact(dpIdx),
+          address: generateAddress(dpIdx),
           city: dp.city,
           country: 'Romania',
         },
@@ -820,14 +881,19 @@ async function main() {
         gender: Gender.FEMALE,
         bloodType: 'A+',
         allergies: ['Penicillin'],
+        cnp: generateCNP(Gender.FEMALE, new Date('1985-06-15'), 'București'),
+        insuranceNo: generateInsuranceNo('București', 7),
+        emergencyContact: generateEmergencyContact(7),
+        address: generateAddress(7),
         city: 'București',
         country: 'Romania',
       },
     });
   }
 
-  // 50 additional patients with varied ages and allergies
-  for (let i = 0; i < 50; i++) {
+  // Additional patients with varied ages, allergies, and fully-populated records.
+  const EXTRA_PATIENT_COUNT = 200;
+  for (let i = 0; i < EXTRA_PATIENT_COUNT; i++) {
     const isMale = i % 2 === 0;
     const first = isMale ? FIRST_M[(i * 5) % FIRST_M.length] : FIRST_F[(i * 5) % FIRST_F.length];
     const last = LAST[(i * 7) % LAST.length];
@@ -863,14 +929,21 @@ async function main() {
         if (!allergies.includes(a)) allergies.push(a);
       }
 
+      const gender = isMale ? Gender.MALE : Gender.FEMALE;
+      const city = CITIES[i % CITIES.length];
+
       await prisma.patientProfile.create({
         data: {
           userId: user.id,
           dateOfBirth: dob,
-          gender: isMale ? Gender.MALE : Gender.FEMALE,
+          gender,
           bloodType: BLOOD[i % BLOOD.length],
           allergies,
-          city: CITIES[i % CITIES.length],
+          cnp: generateCNP(gender, dob, city),
+          insuranceNo: generateInsuranceNo(city, i),
+          emergencyContact: generateEmergencyContact(i),
+          address: generateAddress(i),
+          city,
           country: 'Romania',
         },
       });

@@ -9,17 +9,21 @@ export const getAllPatients = async (req: AuthRequest, res: Response, next: Next
     const { search, page = '1', limit = '20' } = req.query as Record<string, string>;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const where = search
-      ? {
-          user: {
-            OR: [
-              { firstName: { contains: search, mode: 'insensitive' as const } },
-              { lastName: { contains: search, mode: 'insensitive' as const } },
-              { email: { contains: search, mode: 'insensitive' as const } },
-            ],
-          },
-        }
-      : {};
+    // Hide the internal "_ghosts@synthea.ro" system patient that owns ghost bookings.
+    const where = {
+      user: {
+        email: { not: '_ghosts@synthea.ro' },
+        ...(search
+          ? {
+              OR: [
+                { firstName: { contains: search, mode: 'insensitive' as const } },
+                { lastName: { contains: search, mode: 'insensitive' as const } },
+                { email: { contains: search, mode: 'insensitive' as const } },
+              ],
+            }
+          : {}),
+      },
+    };
 
     const [patients, total] = await Promise.all([
       prisma.patientProfile.findMany({
