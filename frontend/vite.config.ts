@@ -33,4 +33,9 @@ export default defineConfig({
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
+
+  // Serve on 3000 to match the backend CORS allow-list (FRONTEND_URL),
+  // APP_PUBLIC_URL, and OPENROUTER_REFERER, which all default to :3000.
+  server: { port: 3000, host: true },
+  preview: { port: 3000, host: true },
 })

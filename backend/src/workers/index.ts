@@ -1,7 +1,8 @@
 // Standalone worker process (separate from the API). Run with `npm run worker`.
 // Loads env itself since it does not boot through src/index.ts.
 import dotenv from 'dotenv';
-dotenv.config();
+// See src/index.ts — local .env wins over stale shell vars in dev; no-op in Docker.
+dotenv.config({ override: true });
 
 import { Worker, Job } from 'bullmq';
 import { connection, QUEUE_NAME } from '../config/queue';

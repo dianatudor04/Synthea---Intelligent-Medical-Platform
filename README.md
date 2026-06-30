@@ -73,47 +73,62 @@ Synthea/
 
 ### 1. Cerințe
 - Node.js 20+
-- PostgreSQL (sau Docker)
-- npm / yarn
+- Docker + Docker Compose (pentru serviciile de backing)
+- npm
 
-### 2. Setup
+Workflow-ul recomandat: serviciile de infrastructură (Postgres, Redis, RustFS,
+Mailpit) rulează în Docker, iar backend / worker / frontend rulează pe host cu
+hot-reload.
+
+### 2. Setup (un singur pas)
 
 ```bash
-# Clonează și intră în director
 git clone <repo> && cd Synthea---Intelligent-Medical-Platform
 
-# Configurează variabilele de mediu
+# Secrete pentru compose (JWT etc.) — valorile implicite merg pentru dev local
 cp .env.example .env
-# Editează .env cu valorile tale
 
-# Instalează dependențele backend
-cd backend
-npm install
+# Config backend pentru serverele de dev de pe host
+cp backend/.env.example backend/.env
 
-# Generează Prisma client
-npx prisma generate
-
-# Rulează migrațiile
-npx prisma migrate dev --name init
-
-# Seed baza de date (users demo)
-npm run prisma:seed
-
-# Pornește backend-ul
-npm run dev
+# Pornește infra, instalează dependențele, migrează + seed
+make setup
 ```
 
-> Backend rulează pe: **http://localhost:5000**
-> Health check: **http://localhost:5000/health**
+Apoi pornește cele trei servere, fiecare în terminalul lui:
 
-### 3. Docker (opțional — rulează tot)
+```bash
+make backend    # http://localhost:5000  (health: /health)
+make worker     # procesoarele BullMQ
+make frontend   # http://localhost:3000
+```
+
+> Frontend-ul rulează pe **:3000** ca să corespundă cu allow-list-ul CORS al
+> backend-ului (`FRONTEND_URL`).
+
+**Logins demo** (după seed):
+
+| Rol     | Email                | Parolă        |
+|---------|----------------------|---------------|
+| Admin   | admin@synthea.ro     | `Admin@1234!`   |
+| Doctor  | doctor@synthea.ro    | `Doctor@1234!`  |
+| Patient | patient@synthea.ro   | `Patient@1234!` |
+
+Email-urile trimise în dev pot fi văzute în Mailpit: **http://localhost:8025**
+
+### 3. Tot stack-ul în Docker (opțional)
+
+Construiește imagini de producție pentru backend, worker și frontend pe lângă
+infra (profilul `full`):
 
 ```bash
 cp .env.example .env
-# Editează .env
-
-docker-compose up -d
+make stack
+# echivalent: docker compose --profile full up -d --build
 ```
+
+Un `docker compose up -d` simplu (fără profil) pornește **doar infrastructura** —
+exact ce ai nevoie pentru workflow-ul de dev de mai sus.
 
 ---
 

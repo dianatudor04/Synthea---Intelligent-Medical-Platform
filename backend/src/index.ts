@@ -2,7 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-dotenv.config();
+// override: true makes the local .env authoritative in development, so a stale
+// DATABASE_URL/REDIS_URL exported in the shell can't hijack the dev DB. In the
+// Docker image there is no .env file, so injected env vars are used unchanged.
+dotenv.config({ override: true });
 
 import { rateLimit } from 'express-rate-limit';
 import { env } from './config/env';

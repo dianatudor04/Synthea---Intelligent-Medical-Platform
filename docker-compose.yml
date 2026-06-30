@@ -1,4 +1,19 @@
-version: '3.9'
+# ─────────────────────────────────────────────────────────────────────────────
+#  Synthea — Docker Compose
+#
+#  Two ways to run:
+#
+#  1) Dev (recommended): only the backing services run in Docker; the backend,
+#     worker, and frontend run on the host with hot-reload.
+#         docker compose up -d            # postgres, redis, rustfs, mailpit
+#         make dev                         # or run the three dev servers yourself
+#
+#  2) Full stack in Docker: everything, built as production images.
+#         docker compose --profile full up -d --build
+#
+#  The backend/worker/frontend live under the "full" profile, so a plain
+#  `docker compose up` brings up infrastructure only.
+# ─────────────────────────────────────────────────────────────────────────────
 
 services:
   # ─── PostgreSQL Database (with pgvector) ──────────────────
@@ -36,7 +51,8 @@ services:
     volumes:
       - rustfs_data:/data
     healthcheck:
-      test: ['CMD-SHELL', 'curl -fsS http://localhost:9000/minio/health/live || exit 1']
+      # RustFS exposes /health (the MinIO-style /minio/health/live path 403s here).
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:9000/health || exit 1']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -72,6 +88,7 @@ services:
 
   # ─── Backend API ──────────────────────────────────────────
   backend:
+    profiles: ['full']
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -116,9 +133,15 @@ services:
       - '5000:5000'
     volumes:
       - ./backend/logs:/app/logs
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:5000/health || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   # ─── Worker (BullMQ job processors) ───────────────────────
   worker:
+    profiles: ['full']
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -153,17 +176,19 @@ services:
       RUSTFS_BUCKET: ${RUSTFS_BUCKET:-synthea-patient-uploads}
       RUSTFS_REGION: ${RUSTFS_REGION:-us-east-1}
 
-  # ─── Frontend (Next.js) ───────────────────────────────────
+  # ─── Frontend (Vite SPA, served by nginx) ─────────────────
   frontend:
+    profiles: ['full']
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        # Vite inlines this at build time; point the browser at the host API port.
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:5000/api}
     container_name: synthea_frontend
     restart: unless-stopped
     depends_on:
       - backend
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:5000/api
     ports:
       - '3000:3000'
 
