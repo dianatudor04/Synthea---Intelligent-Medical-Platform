@@ -113,6 +113,7 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, Component: NursePatientListPage },
+      { path: 'patients/:id', Component: PatientDetailPage },
       { path: 'tasks', Component: NurseTasksPage },
       { path: 'notifications', Component: NurseNotificationsPage },
     ],

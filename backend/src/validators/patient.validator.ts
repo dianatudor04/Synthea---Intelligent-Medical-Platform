@@ -27,6 +27,10 @@ export const updatePatientSchema = z.object({
   emergencyContact: z.string().optional(),
 });
 
+export const setTriageStatusSchema = z.object({
+  triageStatus: z.enum(['GOOD', 'INTERMEDIATE', 'CRITICAL']),
+});
+
 export const createMedicalRecordSchema = z.object({
   diagnosis: z.string().optional(),
   symptoms: z.array(z.string()).default([]),

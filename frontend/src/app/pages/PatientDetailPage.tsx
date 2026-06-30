@@ -19,7 +19,16 @@ import { Label } from '../components/ui/label';
 import { Checkbox } from '../components/ui/checkbox';
 import { patientsApi, interactionsApi } from '../../lib/services';
 import { ApiRequestError } from '../../lib/api';
-import { Appointment, MedicalRecord, PatientProfile, DrugInteraction, InteractionLevel } from '../../lib/types';
+import { Appointment, MedicalRecord, PatientProfile, DrugInteraction, InteractionLevel, TriageStatus } from '../../lib/types';
+import { useAuth } from '../../lib/auth';
+import { TriageBadge } from '../components/TriageBadge';
+
+const TRIAGE_LABEL: Record<TriageStatus, string> = { GOOD: 'Good', INTERMEDIATE: 'Intermediate', CRITICAL: 'Critical' };
+const TRIAGE_BTN_ACTIVE: Record<TriageStatus, string> = {
+  GOOD: 'bg-[#E8F5E9] text-[#2E7D32] border-[#A5D6A7]',
+  INTERMEDIATE: 'bg-[#FFF3E0] text-[#E65100] border-[#FFCC80]',
+  CRITICAL: 'bg-[#FFEBEE] text-[#C62828] border-[#EF9A9A]',
+};
 
 function ageFromDob(dob: string) {
   const d = new Date(dob);
@@ -37,9 +46,27 @@ const LEVEL_STYLES: Record<InteractionLevel, string> = {
 export function PatientDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canTriage = user?.role === 'DOCTOR' || user?.role === 'NURSE' || user?.role === 'ADMIN';
   const [patient, setPatient] = useState<(PatientProfile & { appointments: Appointment[]; medicalRecords: MedicalRecord[] }) | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [savingTriage, setSavingTriage] = useState(false);
+
+  async function handleSetTriage(status: TriageStatus) {
+    if (!id || patient?.triageStatus === status || savingTriage) return;
+    setSavingTriage(true);
+    try {
+      const updated = await patientsApi.setTriage(id, status);
+      setPatient((prev) =>
+        prev ? { ...prev, triageStatus: updated.triageStatus, triagedAt: updated.triagedAt, triagedBy: updated.triagedBy } : prev,
+      );
+    } catch {
+      // Leave the previous status in place if the update fails.
+    } finally {
+      setSavingTriage(false);
+    }
+  }
 
   // ── New medical record dialog ───────────────────────────────
   const emptyForm = {
@@ -191,7 +218,7 @@ export function PatientDetailPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-20 lg:pb-6">
-      <Button variant="ghost" onClick={() => navigate('/doctor/patients')} className="gap-2">
+      <Button variant="ghost" onClick={() => navigate(user?.role === 'NURSE' ? '/nurse' : '/doctor/patients')} className="gap-2">
         <ArrowLeft className="w-4 h-4" />
         Back to Patients
       </Button>
@@ -205,7 +232,10 @@ export function PatientDetailPage() {
           <div className="flex-1">
             <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-4">
               <div>
-                <h1 className="text-2xl lg:text-3xl font-semibold text-gray-800 mb-2">{fullName || 'Patient'}</h1>
+                <div className="flex flex-wrap items-center gap-3 mb-2">
+                  <h1 className="text-2xl lg:text-3xl font-semibold text-gray-800">{fullName || 'Patient'}</h1>
+                  <TriageBadge status={patient.triageStatus} />
+                </div>
                 <div className="flex flex-wrap items-center gap-3 text-gray-600">
                   <span>{ageFromDob(patient.dateOfBirth)} years</span>
                   <span>•</span>
@@ -218,6 +248,35 @@ export function PatientDetailPage() {
                   )}
                 </div>
               </div>
+
+              {canTriage && (
+                <div className="lg:text-right">
+                  <p className="text-xs font-medium text-gray-500 mb-2">Triage status</p>
+                  <div className="flex flex-wrap gap-2 lg:justify-end">
+                    {(['GOOD', 'INTERMEDIATE', 'CRITICAL'] as TriageStatus[]).map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        disabled={savingTriage}
+                        onClick={() => handleSetTriage(s)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors disabled:opacity-50 ${
+                          patient.triageStatus === s
+                            ? TRIAGE_BTN_ACTIVE[s]
+                            : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                        }`}
+                      >
+                        {TRIAGE_LABEL[s]}
+                      </button>
+                    ))}
+                  </div>
+                  {patient.triagedBy && patient.triagedAt && (
+                    <p className="text-xs text-gray-400 mt-2">
+                      Set by {patient.triagedBy.firstName} {patient.triagedBy.lastName} ·{' '}
+                      {new Date(patient.triagedAt).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

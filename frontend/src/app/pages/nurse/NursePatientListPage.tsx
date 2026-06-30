@@ -7,6 +7,7 @@ import { Badge } from '../../components/ui/badge';
 import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 import { patientsApi } from '../../../lib/services';
 import { PatientProfile } from '../../../lib/types';
+import { TriageBadge } from '../../components/TriageBadge';
 
 function ageFromDob(dob: string) {
   const d = new Date(dob);
@@ -73,7 +74,7 @@ export function NursePatientListPage() {
           const initials = `${u?.firstName?.[0] ?? '?'}${u?.lastName?.[0] ?? ''}`.toUpperCase();
           const Icon = p.allergies.length > 0 ? AlertCircle : Heart;
           return (
-            <Link key={p.id} to={`/doctor/patients/${p.id}`}>
+            <Link key={p.id} to={`/nurse/patients/${p.id}`}>
               <Card className="p-4 border-0 shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex items-start gap-4">
                   <Avatar className="w-12 h-12">
@@ -89,10 +90,13 @@ export function NursePatientListPage() {
                           {ageFromDob(p.dateOfBirth)} years • {p.gender.toLowerCase()}
                         </p>
                       </div>
-                      <Badge className="bg-[#FFF3E0] text-[#FF9800] border-0 text-xs">
-                        <Activity className="w-3 h-3 mr-1" />
-                        Patient
-                      </Badge>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <TriageBadge status={p.triageStatus} />
+                        <Badge className="bg-[#FFF3E0] text-[#FF9800] border-0 text-xs">
+                          <Activity className="w-3 h-3 mr-1" />
+                          Patient
+                        </Badge>
+                      </div>
                     </div>
                     {p.allergies.length > 0 && (
                       <div className="flex items-center gap-2 text-xs text-[#F44336] mt-1">

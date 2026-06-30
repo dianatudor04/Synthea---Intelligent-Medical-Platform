@@ -24,7 +24,10 @@ export const getAllPatients = async (req: AuthRequest, res: Response, next: Next
     const [patients, total] = await Promise.all([
       prisma.patientProfile.findMany({
         where,
-        include: { user: { select: { firstName: true, lastName: true, email: true, phone: true } } },
+        include: {
+          user: { select: { firstName: true, lastName: true, email: true, phone: true } },
+          triagedBy: { select: { firstName: true, lastName: true } },
+        },
         skip,
         take: parseInt(limit),
         orderBy: { createdAt: 'desc' },
@@ -45,6 +48,7 @@ export const getPatientById = async (req: AuthRequest, res: Response, next: Next
       where: { id: req.params.id },
       include: {
         user: { select: { firstName: true, lastName: true, email: true, phone: true, avatarUrl: true } },
+        triagedBy: { select: { firstName: true, lastName: true } },
         appointments: { orderBy: { scheduledAt: 'desc' }, take: 5 },
         medicalRecords: { orderBy: { createdAt: 'desc' }, take: 5 },
       },
@@ -99,6 +103,30 @@ export const updatePatient = async (req: AuthRequest, res: Response, next: NextF
         ...(cnp !== undefined && { cnp }),
         ...(insuranceNo !== undefined && { insuranceNo }),
         ...(emergencyContact !== undefined && { emergencyContact }),
+      },
+    });
+    res.json(patient);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PUT /api/patients/:id/triage (staff sets the manual triage state)
+export const setTriageStatus = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const target = await prisma.patientProfile.findUnique({ where: { id: req.params.id } });
+    if (!target) throw new ApiError(404, 'Patient not found');
+
+    const patient = await prisma.patientProfile.update({
+      where: { id: req.params.id },
+      data: {
+        triageStatus: req.body.triageStatus,
+        triagedAt: new Date(),
+        triagedById: req.user!.id,
+      },
+      include: {
+        user: { select: { firstName: true, lastName: true, email: true, phone: true } },
+        triagedBy: { select: { firstName: true, lastName: true } },
       },
     });
     res.json(patient);

@@ -4,6 +4,7 @@ import { Calendar, Users, Activity, AlertCircle, Clock, TrendingUp, ChevronRight
 import { Card } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { TriageBadge } from '../components/TriageBadge';
 import { useAuth } from '../../lib/auth';
 import { adminApi, appointmentsApi } from '../../lib/services';
 import { Appointment, DashboardStats } from '../../lib/types';
@@ -147,9 +148,12 @@ export function DashboardPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2 mb-1">
                         <h3 className="font-medium text-gray-800 truncate">{patientName}</h3>
-                        <Badge className={`${statusColors[appointment.status] ?? ''} border-0 text-xs shrink-0`}>
-                          {appointment.status.toLowerCase().replace('_', ' ')}
-                        </Badge>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <TriageBadge status={appointment.patient?.triageStatus} />
+                          <Badge className={`${statusColors[appointment.status] ?? ''} border-0 text-xs`}>
+                            {appointment.status.toLowerCase().replace('_', ' ')}
+                          </Badge>
+                        </div>
                       </div>
                       {appointment.reason && <p className="text-sm text-gray-500">{appointment.reason}</p>}
                       <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">

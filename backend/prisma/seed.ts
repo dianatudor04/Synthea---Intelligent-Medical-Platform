@@ -519,6 +519,16 @@ async function seedDemoForLegacyDoctor(patientPasswordHash: string) {
       });
     }
 
+    // Demo triage statuses on a deterministic subset (most patients stay untriaged).
+    const triagePick = ['CRITICAL', null, 'INTERMEDIATE', null, 'GOOD', null] as const;
+    const desiredTriage = triagePick[dp.ageYears % triagePick.length];
+    if (desiredTriage && pp.triageStatus === null) {
+      await prisma.patientProfile.update({
+        where: { id: pp.id },
+        data: { triageStatus: desiredTriage, triagedAt: new Date(), triagedById: doctor.id },
+      });
+    }
+
     for (const a of dp.appointments) {
       const scheduledAt = new Date(today);
       scheduledAt.setDate(scheduledAt.getDate() + a.daysFromNow);

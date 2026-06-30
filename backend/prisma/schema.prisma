@@ -54,6 +54,13 @@ enum TriageLevel {
   ROUTINE
 }
 
+// Manual patient-state label set by staff (distinct from the AI TriageLevel above).
+enum TriageStatus {
+  GOOD
+  INTERMEDIATE
+  CRITICAL
+}
+
 enum RecommendationStatus {
   PENDING
   DELIVERED
@@ -98,6 +105,9 @@ model User {
 
   // 1-to-many: doctor reviews triage assessments
   triageReviews          TriageRecord[]   @relation("DoctorTriageReviews")
+
+  // 1-to-many: patients whose triage status this staff member last set
+  patientsTriaged        PatientProfile[] @relation("PatientTriagedBy")
 
   // 1-to-many: any user can chat with the assistant
   aiChatSessions         AiChatSession[]
@@ -209,7 +219,13 @@ model PatientProfile {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
+  // Manual triage state (null = untriaged) + last-change attribution.
+  triageStatus     TriageStatus?
+  triagedAt        DateTime?
+  triagedById      String?
+
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  triagedBy        User?    @relation("PatientTriagedBy", fields: [triagedById], references: [id])
 
   appointments     Appointment[]
   medicalRecords   MedicalRecord[]

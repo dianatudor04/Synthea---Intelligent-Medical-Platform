@@ -14,6 +14,7 @@ import {
   Review,
   ChatSession,
   TriageResult,
+  TriageStatus,
   AuditLog,
   AdminUser,
   UserProfile,
@@ -45,6 +46,8 @@ export const patientsApi = {
     emergencyContact?: string;
   }) => api.post<PatientProfile>('/patients', input),
   update: (id: string, input: Partial<PatientProfile>) => api.put<PatientProfile>(`/patients/${id}`, input),
+  setTriage: (id: string, triageStatus: TriageStatus) =>
+    api.put<PatientProfile>(`/patients/${id}/triage`, { triageStatus }),
   remove: (id: string) => api.del<{ message: string }>(`/patients/${id}`),
   medicalRecords: (id: string, params: { page?: number; limit?: number } = {}) =>
     api.get<Paginated<MedicalRecord>>(`/patients/${id}/medical-records`, params),

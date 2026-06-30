@@ -5,6 +5,7 @@ import { Card } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { patientsApi } from '../../lib/services';
 import { PatientProfile } from '../../lib/types';
+import { TriageBadge } from '../components/TriageBadge';
 
 function ageFromDob(dob: string) {
   const d = new Date(dob);
@@ -86,7 +87,10 @@ export function PatientsPage() {
                           {ageFromDob(patient.dateOfBirth)} years • {patient.gender.toLowerCase()}
                         </p>
                       </div>
-                      <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <TriageBadge status={patient.triageStatus} />
+                        <ChevronRight className="w-5 h-5 text-gray-400" />
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">

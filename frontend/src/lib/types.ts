@@ -5,6 +5,7 @@ export type Role = 'PATIENT' | 'DOCTOR' | 'ADMIN' | 'NURSE';
 export type AppointmentStatus = 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
 export type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PAID' | 'OVERDUE' | 'CANCELLED';
 export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
+export type TriageStatus = 'GOOD' | 'INTERMEDIATE' | 'CRITICAL';
 
 export type Paginated<T> = {
   data: T[];
@@ -53,6 +54,9 @@ export type PatientProfile = {
   country: string;
   createdAt: string;
   updatedAt: string;
+  triageStatus?: TriageStatus | null;
+  triagedAt?: string | null;
+  triagedBy?: { firstName: string; lastName: string } | null;
   user?: { firstName: string; lastName: string; email: string; phone?: string };
 };
 
@@ -94,7 +98,7 @@ export type Appointment = {
   notes?: string | null;
   roomNumber?: string | null;
   feeAtBooking?: number | null;
-  patient?: { user?: { firstName: string; lastName: string; email?: string } };
+  patient?: { triageStatus?: TriageStatus | null; user?: { firstName: string; lastName: string; email?: string } };
   doctor?: {
     firstName: string;
     lastName: string;
